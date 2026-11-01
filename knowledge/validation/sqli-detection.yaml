@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-SQLI-DETECT-001
+vuln_class: sqli
+executor: http
+safety_level: 1
+positive_test:
+  description: "Signature error DB khas ATAU boolean differential stabil: pasangan benar/salah berbeda isi secara konsisten 3x"
+negative_control:
+  description: "Nilai sintaks-valid acak tidak menghasilkan selisih apa pun"
+baseline:
+  description: "Respons parameter normal"
+repeat: 2
+verdict:
+  true_positive: "salah satu jalur positive terpenuhi penuh + kontrol bersih"
+  false_positive: "selisih tidak stabil / halaman error generik / kontrol ikut berbeda (sumber selisih bukan DB)"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"

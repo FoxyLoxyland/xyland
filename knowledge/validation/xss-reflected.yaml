@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-XSS-REFLECTED-001
+vuln_class: xss-reflected
+executor: browser
+safety_level: 1
+positive_test:
+  description: "Payload marker unik terpantul tanpa encoding DAN tereksekusi di DOM (executor browser)"
+negative_control:
+  description: "Nilai benign terpantul sebagai teks biasa tanpa eksekusi"
+baseline:
+  description: "Respons halaman normal tanpa parameter uji"
+repeat: 2
+verdict:
+  true_positive: "positive terpenuhi 2/2 run di browser + kontrol negatif tanpa eksekusi"
+  false_positive: "payload ter-encode / hanya di konteks aman / kontrol menunjukkan perilaku sama"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"

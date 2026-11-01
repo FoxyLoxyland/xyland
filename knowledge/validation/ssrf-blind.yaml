@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-SSRF-BLIND-001
+vuln_class: ssrf
+executor: http
+safety_level: 2
+positive_test:
+  description: "Interaksi OOB masuk ke server kita dengan token unik yang hanya ada di payload parameter uji"
+negative_control:
+  description: "Parameter diisi nilai non-URL — tidak boleh ada interaksi"
+baseline:
+  description: "Request fitur tanpa parameter URL"
+repeat: 2
+verdict:
+  true_positive: "korelasi token OOB cocok + kontrol negatif sunyi"
+  false_positive: "interaksi berasal dari prefetcher/CDN pihak ketiga yang teridentifikasi, bukan dari target"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"

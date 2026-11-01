@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-TRAVERSAL-001
+vuln_class: path-traversal
+executor: http
+safety_level: 1
+positive_test:
+  description: "Isi berkas penanda dari LUAR direktori sah terbaca (format/isi terverifikasi)"
+negative_control:
+  description: "Path sah di dalam direktori bekerja normal; path traversal ke target yang pasti tidak ada = not-found"
+baseline:
+  description: "Unduhan berkas sah biasa"
+repeat: 2
+verdict:
+  true_positive: "isi luar direktori terbukti + kontrol konsisten"
+  false_positive: "respons adalah halaman fallback / pesan error yang memuat string path (itu kelas disclosure, bukan traversal)"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"

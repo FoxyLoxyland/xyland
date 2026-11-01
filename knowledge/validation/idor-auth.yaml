@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-IDOR-001
+vuln_class: idor
+executor: http
+safety_level: 1
+positive_test:
+  description: "Aktor B (dan/atau anon) membaca objek milik aktor A — isi data A terbukti"
+negative_control:
+  description: "Aktor B membaca objek milik B sendiri; objek yang pasti tidak ada menghasilkan not-found"
+baseline:
+  description: "Aktor A membaca objek milik A"
+repeat: 2
+verdict:
+  true_positive: "data A terbaca aktor lain + kontrol kepemilikan berfungsi untuk objek sendiri"
+  false_positive: "endpoint publik-by-design / kontrol menunjukkan server membalas generik untuk semua ID"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"

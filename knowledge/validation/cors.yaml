@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-CORS-001
+vuln_class: cors
+executor: browser
+safety_level: 1
+positive_test:
+  description: "Fetch berkredensial lintas-origin dari halaman kita: browser memberi akses baca ke data sensitif target"
+negative_control:
+  description: "Origin acak lain; request tanpa kredensial"
+baseline:
+  description: "Request same-origin normal ke endpoint yang sama"
+repeat: 2
+verdict:
+  true_positive: "ACAO merefleksikan origin kita + ACAC true + data terbaca di JS browser, 2/2 run"
+  false_positive: "penilaian hanya dari header via curl (DITOLAK sebagai bukti) / data publik tanpa kredensial"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"

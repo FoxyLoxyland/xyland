@@ -18,3 +18,63 @@ cards:
     affected: "versi sebelum perbaikan Mei-Juni 2023 (lihat kartu)"
     kev: true
     file: CVE-2023-34362-moveit.yaml
+  - id: CVE-2024-4577
+    product: "PHP (Windows, mode CGI)"
+    affected: "8.1 < 8.1.29, 8.2 < 8.2.20, 8.3 < 8.3.8 di Windows dengan PHP-CGI"
+    kev: true
+    file: CVE-2024-4577-php-cgi.yaml
+  - id: CVE-2021-3129
+    product: "Laravel + facade/ignition"
+    affected: "aplikasi Laravel dengan Ignition <= 2.5.1 dan APP_DEBUG aktif"
+    kev: true
+    file: CVE-2021-3129-laravel-ignition.yaml
+  - id: CVE-2022-22947
+    product: "Spring Cloud Gateway"
+    affected: "< 3.0.7 dan 3.1.0 (perbaikan di 3.0.7 / 3.1.1), actuator gateway terekspos & tidak diamankan"
+    kev: true
+    file: CVE-2022-22947-spring-cloud-gateway.yaml
+  - id: CVE-2022-26134
+    product: "Atlassian Confluence Server/Data Center"
+    affected: "rentang versi sebelum perbaikan Juli 2022 (7.4.x < 7.4.17, 7.13.x < 7.13.7, 7.14.x < 7.14.3, 7.15.x-7.18.0 — verifikasi NVD untuk angka persis)"
+    kev: true
+    file: CVE-2022-26134-confluence.yaml
+  - id: CVE-2023-22515
+    product: "Atlassian Confluence Server/Data Center"
+    affected: "8.0.0-8.3.2, 8.4.0-8.4.2, 8.5.0-8.5.1 (endpoint setup belum selesai dikunci)"
+    kev: true
+    file: CVE-2023-22515-confluence.yaml
+  - id: CVE-2023-4966
+    product: "NetScaler ADC & Gateway"
+    affected: "14.1 < 14.1-8.50, 13.1 < 13.1-49.15, 13.0 < 13.0-92.19; terkonfigurasi sebagai gateway/AAA virtual server"
+    kev: true
+    file: CVE-2023-4966-citrix-bleed.yaml
+  - id: CVE-2021-26855
+    product: "Microsoft Exchange Server"
+    affected: "2013, 2016, 2019 sebelum patch Maret 2021"
+    kev: true
+    file: CVE-2021-26855-proxylogon.yaml
+  - id: CVE-2024-27198
+    product: "TeamCity On-Premises"
+    affected: "< 2023.11.4"
+    kev: true
+    file: CVE-2024-27198-teamcity.yaml
+  - id: CVE-2023-27524
+    product: "Apache Superset"
+    affected: "< 2.1.0 yang masih memakai SECRET_KEY bawaan/default"
+    kev: true
+    file: CVE-2023-27524-superset.yaml
+  - id: CVE-2023-23752
+    product: "Joomla!"
+    affected: "4.0.0 - 4.2.7"
+    kev: true
+    file: CVE-2023-23752-joomla.yaml
+  - id: CVE-2019-11043
+    product: "PHP + nginx + PHP-FPM"
+    affected: "PHP 7.1 < 7.1.33, 7.2 < 7.2.24, 7.3 < 7.3.11 dengan konfigurasi nginx tertentu (fastcgi_split_path_info + try_files $uri)"
+    kev: true
+    file: CVE-2019-11043-php-fpm.yaml
+  - id: CVE-2023-38646
+    product: "Metabase"
+    affected: "open-source < 0.46.6.1, enterprise < 1.46.6.1; token setup belum dirotasi/terekspos di endpoint setup"
+    kev: true
+    file: CVE-2023-38646-metabase.yaml

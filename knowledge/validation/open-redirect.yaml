@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-OPEN-REDIRECT-001
+vuln_class: open-redirect
+executor: browser
+safety_level: 1
+positive_test:
+  description: "Client mengikuti redirect ke domain marker milik sendiri dari parameter uji"
+negative_control:
+  description: "Nilai redirect internal yang sah tetap menuju tujuan internal"
+baseline:
+  description: "Respons tanpa parameter redirect"
+repeat: 2
+verdict:
+  true_positive: "redirect eksternal ke marker terbukti + kontrol internal normal"
+  false_positive: "redirect berhenti di halaman peringatan internal / parameter diabaikan"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"

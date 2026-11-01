@@ -1,44 +1,30 @@
 # Indeks L1 skills — HANYA metadata ini yang selalu masuk konteks agent (doc 12, P-3).
 # Isi penuh (L2) dimuat engine hanya untuk skill terpilih. Sinkron dengan folder di direktori ini.
-version: 1
+version: 2
+updated: "2026-11-02"
 skills:
-  - name: recon-deep
-    description: "Recon mendalam: subdomain, DNS, live host, fingerprint, JS & endpoint extraction"
-    triggers: { phase: recon }
-    safety_level: 0
-    context_cost: 2100
-  - name: subdomain-enum
-    description: "Enumerasi subdomain pasif+aktif dan resolusi DNS"
-    triggers: { phase: recon, needs: root-domain }
-    safety_level: 0
-    context_cost: 900
-  - name: xss-reflected
-    description: "Tes & validasi reflected XSS dengan payload marker non-destruktif"
-    triggers: { fingerprint: ["param-reflection", "content-type:text/html"], phase: validation }
-    safety_level: 1
-    context_cost: 1800
-  - name: idor-auth
-    description: "Auth differential antar aktor (anon/A/B) pada state model untuk IDOR & access control"
-    triggers: { fingerprint: ["authenticated-objects", "numeric-or-uuid-ids"], phase: validation }
-    safety_level: 1
-    context_cost: 2400
-  - name: ssrf-blind
-    description: "Deteksi SSRF blind dengan korelasi out-of-band (interactsh) ke server milik sendiri"
-    triggers: { fingerprint: ["url-parameter", "fetch-or-webhook-feature"], phase: validation }
-    safety_level: 2
-    context_cost: 2200
-  - name: exposed-files
-    description: "Pemeriksaan file/endpoint terekspos (.git, .env, backup, debug) dengan baseline anti-200-trap"
-    triggers: { phase: scanning }
-    safety_level: 0
-    context_cost: 1200
-  - name: open-redirect
-    description: "Validasi open redirect ke domain marker milik sendiri + kontrol redirect internal"
-    triggers: { fingerprint: ["redirect-parameter"], phase: validation }
-    safety_level: 1
-    context_cost: 1100
-  - name: cors-check
-    description: "Validasi CORS misconfiguration secara browser-realistic (bukan curl)"
-    triggers: { fingerprint: ["api-with-credentials", "origin-reflection"], phase: validation }
-    safety_level: 1
-    context_cost: 1600
+  # --- Recon & Enumeration ---
+  - { name: recon-deep, description: "Recon mendalam: subdomain, DNS, live host, fingerprint, JS & endpoint extraction", triggers: { phase: recon }, safety_level: 0, context_cost: 2100 }
+  - { name: subdomain-enum, description: "Enumerasi subdomain pasif+aktif dan resolusi DNS", triggers: { phase: recon, needs: root-domain }, safety_level: 0, context_cost: 900 }
+  - { name: api-discovery, description: "Penemuan permukaan API: docs terekspos, GraphQL introspection, versi API lama", triggers: { phase: enumeration, fingerprint: ["api-host", "graphql", "openapi"] }, safety_level: 0, context_cost: 1500 }
+  - { name: subdomain-takeover, description: "Deteksi kandidat subdomain takeover dari CNAME menggantung (deteksi saja)", triggers: { phase: enumeration, fingerprint: ["dangling-cname"] }, safety_level: 0, context_cost: 900 }
+  # --- Scanning ---
+  - { name: exposed-files, description: "File/endpoint terekspos (.git, .env, backup, debug) dengan baseline anti-200-trap", triggers: { phase: scanning }, safety_level: 0, context_cost: 1200 }
+  - { name: misconfig-audit, description: "Audit konfigurasi pasif: header, cookie flags, error verbose, listing direktori", triggers: { phase: scanning }, safety_level: 0, context_cost: 1000 }
+  - { name: secrets-in-js, description: "Secret terekspos di JS/respons publik, pola per penyedia + redaksi", triggers: { phase: scanning, fingerprint: ["js-files", "public-config"] }, safety_level: 0, context_cost: 1300 }
+  - { name: wordpress-check, description: "Audit WordPress: versi core/plugin terverifikasi multi-sinyal, REST & xmlrpc exposure", triggers: { fingerprint: ["wordpress"], phase: scanning }, safety_level: 0, context_cost: 1600 }
+  # --- Validation per kelas ---
+  - { name: xss-reflected, description: "Tes & validasi reflected XSS, payload marker, konfirmasi browser", triggers: { fingerprint: ["param-reflection", "content-type:text/html"], phase: validation }, safety_level: 1, context_cost: 1800 }
+  - { name: xss-stored, description: "Stored XSS pada objek uji sendiri + cleanup wajib", triggers: { fingerprint: ["user-content-storage", "rich-text-or-comment"], phase: validation }, safety_level: 2, context_cost: 2000 }
+  - { name: xss-dom, description: "DOM XSS: lacak source→sink JS, validasi executor browser", triggers: { fingerprint: ["spa", "js-heavy", "hash-or-query-driven-ui"], phase: validation }, safety_level: 1, context_cost: 2100 }
+  - { name: sqli-detection, description: "Deteksi SQLi error & boolean differential; ekstraksi = manual-only", triggers: { fingerprint: ["db-backed-parameter", "error-reflection"], phase: validation }, safety_level: 1, context_cost: 1900 }
+  - { name: idor-auth, description: "Auth differential antar aktor pada state model untuk IDOR & access control", triggers: { fingerprint: ["authenticated-objects", "numeric-or-uuid-ids"], phase: validation }, safety_level: 1, context_cost: 2400 }
+  - { name: ssrf-blind, description: "SSRF blind via korelasi OOB (interactsh) ke server sendiri", triggers: { fingerprint: ["url-parameter", "fetch-or-webhook-feature"], phase: validation }, safety_level: 2, context_cost: 2200 }
+  - { name: open-redirect, description: "Open redirect ke domain marker sendiri + kontrol internal", triggers: { fingerprint: ["redirect-parameter"], phase: validation }, safety_level: 1, context_cost: 1100 }
+  - { name: cors-check, description: "CORS misconfiguration secara browser-realistic (bukan curl)", triggers: { fingerprint: ["api-with-credentials", "origin-reflection"], phase: validation }, safety_level: 1, context_cost: 1600 }
+  - { name: csrf-check, description: "CSRF pada aksi uji sendiri: token, SameSite, bukti perubahan state", triggers: { fingerprint: ["cookie-auth", "state-changing-form"], phase: validation }, safety_level: 2, context_cost: 1700 }
+  - { name: jwt-analysis, description: "Analisis JWT sesi uji: alg confusion, kid/jku, klaim & expiry", triggers: { fingerprint: ["jwt-session", "bearer-api"], phase: validation }, safety_level: 1, context_cost: 1800 }
+  - { name: file-upload, description: "Uji validasi upload dengan berkas jinak sendiri + cleanup", triggers: { fingerprint: ["file-upload-feature"], phase: validation }, safety_level: 2, context_cost: 2000 }
+  - { name: path-traversal, description: "Path traversal/LFI dengan berkas penanda tidak sensitif", triggers: { fingerprint: ["file-path-parameter", "download-or-include-feature"], phase: validation }, safety_level: 1, context_cost: 1500 }
+  - { name: race-condition, description: "Race condition pada aksi kuota uji sendiri, paralel terkendali", triggers: { fingerprint: ["quota-or-balance-action", "one-time-claim"], phase: validation }, safety_level: 2, context_cost: 1900 }
+  - { name: business-logic, description: "Business logic di atas state model: lompatan state, nilai, peran", triggers: { fingerprint: ["multi-step-flow", "pricing-or-quota", "role-based-features"], phase: validation }, safety_level: 2, context_cost: 2300 }

@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-EXPOSED-001
+vuln_class: exposure
+executor: http
+safety_level: 0
+positive_test:
+  description: "Isi path kandidat cocok format khas file (mis. [core] pada .git/config)"
+negative_control:
+  description: "Path acak yang pasti tidak ada pada host yang sama"
+baseline:
+  description: "Respons 404/SPA normal host"
+repeat: 2
+verdict:
+  true_positive: "format isi cocok + baseline & kontrol berbeda jelas"
+  false_positive: "baseline/kontrol menghasilkan isi serupa (custom 404 / catch-all) atau isi hanya placeholder"
+  inconclusive: "timeout / WAF block / respons tidak stabil / baseline tidak bisa dibedakan (anti-200-trap)"
