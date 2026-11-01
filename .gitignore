@@ -1,0 +1,22 @@
+# Hasil run & data target — JANGAN PERNAH masuk repo
+results/
+*.db
+*.sqlite*
+artifacts/
+
+# Kredensial & config lokal
+config.yaml
+.env
+*.key
+*.pem
+
+# Build Go
+/xyland
+*.exe
+dist/
+vendor/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

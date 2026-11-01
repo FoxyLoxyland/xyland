@@ -1,0 +1,10 @@
+# Scope file — contoh
+# Baris dengan + = in-scope, - = out-of-scope, # = komentar
+
++ *.example.com
++ api.example.com
++ example.com
+
+# Jangan pernah scan ini:
+- staging-internal.example.com
+- *.dev.example.com

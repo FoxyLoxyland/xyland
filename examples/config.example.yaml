@@ -1,0 +1,30 @@
+# xyland config — contoh (docs/03-ARCHITECTURE.md)
+# Copy ke config.yaml dan sesuaikan. API key JANGAN di-commit — pakai env var.
+
+llm:
+  # Endpoint OpenAI-compatible. Contoh: gateway self-hosted (9Router) di VPS kamu,
+  # OpenAI, OpenRouter, atau Ollama lokal.
+  base_url: "http://localhost:8080/v1"
+  api_key_env: "XYLAND_LLM_API_KEY"   # nama env var, bukan key-nya langsung
+  triage_model: "gpt-4o-mini"         # contoh: model murah untuk volume triage
+  report_model: "gpt-4o"              # contoh: model bagus untuk draft laporan
+  max_tokens_per_job: 200000
+
+scan:
+  concurrency: 25
+  rate_limit_per_host: 10             # request/detik per host — konservatif
+  timeout_seconds: 10
+  user_agent: "xyland/0.1 (authorized security research)"
+
+tools:
+  nuclei_templates_path: "./templates/nuclei"
+  # mode integrasi: library | binary  (menunggu keputusan D-02)
+  integration_mode: "binary"
+
+output:
+  dir: "./results"
+  redact_sensitive: true              # redaksi token/email di bukti & laporan
+
+safety:
+  require_scope: true                 # tolak target di luar scope file
+  human_approval_for_active_validation: true

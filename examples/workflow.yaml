@@ -1,0 +1,56 @@
+# Workflow xyland — dialek mengikuti pola Osmedeus (kind: flow / module) dengan subset engine internal.
+# Lihat docs/02-WORKFLOW.md dan docs/11-REVISED-DESIGN.md.
+name: xyland-standard
+kind: flow
+description: "Scope → Recon Deep → Enum → Hipotesis & Scan → Validasi TP → PoC → Report"
+
+modules:
+  - name: scope
+    kind: module
+    steps:
+      - name: load-scope
+        run: "internal:scope/load"
+        exports: ["targets", "out_of_scope"]
+  - name: recon
+    kind: module
+    depends_on: [scope]
+    steps:
+      - name: subdomain
+        skill: subdomain-enum
+        exports: ["subdomains"]
+      - name: probe
+        tool: httpx
+        args: ["-ss", "-body-hash"]
+        exports: ["live_hosts", "screenshots", "fingerprints"]
+      - name: crawl
+        tool: katana
+        args: ["-jc", "-jsl"]
+        exports: ["urls", "endpoints", "js_files"]
+        on_error: continue_with_note   # coverage note wajib, bukan diam-diam lanjut
+  - name: hypothesize-and-scan
+    kind: module
+    depends_on: [recon]
+    steps:
+      - name: retrieve-knowledge
+        run: "internal:retrieve"      # fingerprint -> kandidat skill & kartu CVE (maks 5)
+        exports: ["candidate_skills", "candidate_cves"]
+      - name: scan
+        tool: nuclei
+        args: ["-templates-from", "selected-by-agent"]
+        exports: ["raw_findings"]
+  - name: validate
+    kind: module
+    depends_on: [hypothesize-and-scan]
+    steps:
+      - name: verdict
+        run: "internal:validate"      # validation.yaml + receipt check + anti-200-trap
+        exports: ["confirmed_findings"]   # hanya TP/likely yang diekspor
+        decision: "stop_if_empty"
+  - name: poc-and-report
+    kind: module
+    depends_on: [validate]
+    steps:
+      - name: poc
+        run: "internal:poc/generate"  # poc.py self-verifying per confirmed finding
+      - name: report
+        run: "internal:report"        # format HackerOne/Bugcrowd + lampiran PoC & verdict

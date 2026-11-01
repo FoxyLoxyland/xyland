@@ -1,0 +1,20 @@
+# Indeks kartu CVE aktif — hanya kartu terkurasi & terverifikasi yang terdaftar di sini (doc 13).
+# Pemilihan saat run: cocokkan fingerprint (produk + versi TERVERIFIKASI), maks 5 kartu masuk konteks.
+version: 1
+updated: "2026-11-02"
+cards:
+  - id: CVE-2021-44228
+    product: "Apache Log4j 2"
+    affected: "2.0-beta9 s/d 2.14.1 (di luar perbaikan parsial 2.15.0 untuk konfigurasi non-default)"
+    kev: true
+    file: CVE-2021-44228-log4shell.yaml
+  - id: CVE-2022-22965
+    product: "Spring Framework (Spring4Shell)"
+    affected: "5.3.0-5.3.17, 5.2.0-5.2.19 (JDK 9+, deployment WAR di Tomcat)"
+    kev: true
+    file: CVE-2022-22965-spring4shell.yaml
+  - id: CVE-2023-34362
+    product: "Progress MOVEit Transfer"
+    affected: "versi sebelum perbaikan Mei-Juni 2023 (lihat kartu)"
+    kev: true
+    file: CVE-2023-34362-moveit.yaml

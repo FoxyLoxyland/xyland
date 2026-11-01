@@ -1,0 +1,31 @@
+# Contoh Validation Rule — Reflected XSS (lihat docs/10-POC-VALIDATION.md)
+id: VAL-XSS-REFLECTED-001
+vuln_class: xss-reflected
+safety_level: 1
+
+positive_test:
+  request:
+    method: GET
+    url: "{{target}}/search?q={{payload}}"
+    payload: 'xyland<svg/onload=1>'
+  matchers:
+    - type: word
+      location: body
+      words: ["xyland<svg/onload=1>"]
+      condition: present-unencoded
+    - type: status
+      status: [200]
+
+negative_control:
+  request:
+    method: GET
+    url: "{{target}}/search?q=xyland-benign-marker"
+
+reproducibility:
+  runs_required: 2
+  allow_flaky: false
+
+verdict_logic:
+  true_positive: "positive matches AND negative control differs AND reproducible"
+  false_positive: "positive fails on re-run OR control shows same behaviour"
+  inconclusive: "timeout / WAF / rate-limit / unstable response"
