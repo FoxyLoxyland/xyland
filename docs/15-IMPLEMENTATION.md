@@ -1,0 +1,39 @@
+# 15 — Catatan Implementasi v0.1
+
+Status: **kode berjalan** (build bersih `go build ./...`, `go vet` bersih, binary ±17 MB, CGO nonaktif).
+
+## Yang sudah terimplementasi (sesuai docs 11–14 & riset putaran 4)
+
+| Modul | Isi |
+|---|---|
+| `internal/engine` | State machine 9 state + DONE; State Brief per state (goal, aksi sah, artefak, gate) |
+| `internal/store` | Ledger SQLite (modernc, pure Go): jobs, executions (receipt), assets, findings, notes; state job = checkpoint untuk resume |
+| `internal/scope` | Scope file (+ allow / − deny / pola *.domain) ditegakkan sebelum recon |
+| `internal/agent` | Orkestrator flow; hipotesis + skor difficulty heuristik; bantuan LLM opsional untuk menilai hipotesis (tidak menentukan verdict) |
+| `internal/skills` | Retrieval deterministik dari `_index.yaml` (maks 5, urut skor lalu biaya konteks) |
+| `internal/knowledge` | Pencocokan kartu CVE ke fingerprint — kandidat saja, kata generik ("server", "windows") disaring |
+| `internal/llm` | Klien OpenAI-compatible (9Router/dll) via env; metering token dicatat; antarmuka meniru bentuk ChatModel Eino |
+| `internal/tools` | Prober HTTP bawaan (tanpa ikuti redirect), fingerprint (server/header/cookie/tech), runner binary eksternal bila ada di PATH |
+| `internal/validate` | Kemiripan body (anti-200-trap), baseline path acak |
+| check bawaan | exposed-files ([core]/ref:/pola .env), reflected-XSS (marker, verdict maksimal *likely* — konfirmasi DOM menyusul), open-redirect (marker domain sendiri), misconfig (observasi deterministik) — semua repeat 2× + kontrol/baseline |
+| `internal/poc` | poc.py self-verifying (exit 0 TP / 2 FP / 3 inconclusive) untuk exposure, xss-reflected, open-redirect |
+| `internal/report` | report.md: hanya confirmed/likely di bagian Findings; sisanya di Catatan Validasi |
+| `internal/tui` + `internal/theme` | Dashboard bubbletea: strip progres flow, panel aset & findings; snapshot statis bila bukan TTY. Palet tunggal di `theme` ("midnight lab": mint #3DFFA2, cyan #39C6F3, violet #9B7CFF) |
+
+## Keputusan build yang diambil
+
+- **SQLite di-pin `modernc.org/sqlite v1.34.5`** + `GOTOOLCHAIN=local` (Go 1.24): versi terbaru modernc menuntut Go ≥ 1.26 dan menarik toolchain baru — untuk v0.1 reprodusibilitas lebih penting; evaluasi ulang saat upgrade Go.
+- **Eino belum di-vendor**: lapisan LLM ditulis sebagai klien ramping berantarmuka kompatibel-bentuk; adapter Eino menyusul setelah spike 9Router (riset putaran 4 §belum-terverifikasi) selesai — menghindari pohon dependensi besar sebelum terbukti perlu.
+- **Nuclei dkk. sebagai binary eksternal dulu** (PATH), bukan library: sesuai peringatan riset bahwa nuclei CLI-first & library-nya tipis; integrasi library dijadwalkan dengan interface pembungkus + pin versi.
+
+## Uji yang sudah dijalankan
+
+Lab lokal (server Python rentan + jebakan SPA-200): `.git/config` & `.git/HEAD` → **confirmed**; `/.env` versi SPA → **false-positive** (jebakan tertolak dengan benar); open-redirect → **confirmed**; reflected XSS → **likely**; misconfig → confirmed/low. PoC hasil generate dijalankan ulang dan mencetak `CONFIRMED_TRUE_POSITIVE` (exit 0).
+
+## Berikutnya
+
+1. Executor browser (rod) untuk menaikkan reflected-XSS `likely → confirmed` + check stored/DOM XSS.
+2. Adapter Eino + spike structured-output di 9Router; streaming token budget di TUI.
+3. Wrapper library ProjectDiscovery dengan interface + pin (nuclei/httpx/katana) & spike CGO katana vs modernc.
+4. Check IDOR/auth & SQLi detection dari validation rules yang sudah ada di `knowledge/validation/`.
+5. Eval harness sesuai ambang riset putaran 4 (Juice Shop/DVWA/vulhub).

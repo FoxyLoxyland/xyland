@@ -58,3 +58,26 @@ Xyland dirancang spesifik untuk menutup keempatnya (lihat `docs/11-REVISED-DESIG
 
 ## Catatan Keamanan & Etika
 Tool ini dirancang hanya untuk pengujian **berizin**: program bug bounty dalam scope, lab sendiri, dan engagement pentest resmi. Safety rules lengkap di `docs/10-POC-VALIDATION.md` §5. Hasil run, data target, dan kredensial **tidak pernah** masuk repo ini (lihat `.gitignore`).
+
+## Status Implementasi (v0.1 — sudah bisa dibangun & dijalankan)
+
+Kode Go **sudah ada** di repo ini (`cmd/xyland` + `internal/`): state machine flow
+(engine), ledger SQLite dengan receipt & checkpoint/resume, scope guard, loader
+skills/CVE dengan retrieval deterministik, klien LLM OpenAI-compatible (opsional —
+tanpa LLM, pipeline berjalan heuristik), prober bawaan, check exposure/reflected-XSS/
+open-redirect/misconfig dengan verdict engine (positive + kontrol negatif + baseline
+anti-200-trap), generator PoC self-verifying, report Markdown, dan TUI (bubbletea +
+lipgloss, tema di `internal/theme`).
+
+```bash
+go build -o xyland ./cmd/xyland
+./xyland scan -t https://target-anda --out results
+./xyland flow        # lihat state machine & State Brief
+./xyland skills      # library skill (L1)
+./xyland cve         # kartu CVE terkurasi
+./xyland tui -o results   # dashboard hasil scan terakhir
+# LLM opsional (9Router/OpenAI/Ollama): XYLAND_LLM_BASE_URL, XYLAND_LLM_API_KEY, XYLAND_LLM_MODEL
+```
+
+Detail: `docs/15-IMPLEMENTATION.md`. Library nuclei sebagai kode (bukan binary eksternal)
+dan adapter Eino adalah langkah berikutnya yang tercatat di sana.
