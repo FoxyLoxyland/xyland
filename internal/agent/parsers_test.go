@@ -47,6 +47,7 @@ const fakeNuclei = "#!/bin/sh\nprev=\"\"; url=\"\"\nfor a in \"$@\"; do if [ \"$
 const fakeHttpx = "#!/bin/sh\nprev=\"\"; url=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-u\" ]; then url=\"$a\"; fi; prev=\"$a\"; done\nprintf '{\"url\":\"%s\",\"status_code\":200,\"title\":\"Lab\",\"tech\":[\"PHP\"]}\\n' \"$url\"\n"
 
 func TestRunWithFakeExternalTools(t *testing.T) {
+	t.Setenv("XYLAND_BROWSER", "off")
 	srv := labServer(t)
 	d1 := writeFakeBin(t, "nuclei", fakeNuclei)
 	d2 := writeFakeBin(t, "httpx", fakeHttpx)
@@ -70,6 +71,7 @@ func TestRunWithFakeExternalTools(t *testing.T) {
 }
 
 func TestRunIDOR(t *testing.T) {
+	t.Setenv("XYLAND_BROWSER", "off")
 	srv := labServer(t)
 	out := t.TempDir()
 	jobID, err := Run(context.Background(), Options{Target: srv.URL, OutDir: out, SkillsDir: filepath.Join("..", "..", "skills"), CVEDir: filepath.Join("..", "..", "knowledge", "cve"), AuthA: "session=alice", AuthB: "session=bob"})
@@ -90,6 +92,7 @@ func TestRunIDOR(t *testing.T) {
 }
 
 func TestRunDryRun(t *testing.T) {
+	t.Setenv("XYLAND_BROWSER", "off")
 	srv := labServer(t)
 	out := t.TempDir()
 	jobID, err := Run(context.Background(), Options{Target: srv.URL, OutDir: out, SkillsDir: filepath.Join("..", "..", "skills"), CVEDir: filepath.Join("..", "..", "knowledge", "cve"), DryRun: true})
@@ -104,5 +107,40 @@ func TestRunDryRun(t *testing.T) {
 	j, _ := st.GetJob(jobID)
 	if j.State != "RETRIEVAL" {
 		t.Fatalf("dry-run harus berhenti di RETRIEVAL, state=%s", j.State)
+	}
+}
+
+func TestParseKatana(t *testing.T) {
+	out := "{\"request\":{\"endpoint\":\"https://a.lab/x?id=1\"}}\n{\"url\":\"https://a.lab/y?q=2\"}\nnoise\n{\"request\":{\"endpoint\":\"https://a.lab/x?id=1\"}}\n"
+	res := parseKatanaJSONL(out)
+	if len(res) != 2 {
+		t.Fatalf("parse katana salah: %v", res)
+	}
+}
+
+const fakeKatana = "#!/bin/sh\nprev=\"\"; url=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-u\" ]; then url=\"$a\"; fi; prev=\"$a\"; done\nprintf '{\"request\":{\"endpoint\":\"%s/deep?token=abc\"}}\\n' \"$url\"\n"
+
+func TestRunWithFakeKatana(t *testing.T) {
+	t.Setenv("XYLAND_BROWSER", "off")
+	srv := labServer(t)
+	d := writeFakeBin(t, "katana", fakeKatana)
+	t.Setenv("PATH", d+":"+os.Getenv("PATH"))
+	out := t.TempDir()
+	// endpoint /deep tidak ada di lab (SPA fallback) — yang diverifikasi: katana dipanggil & tercatat sebagai receipt
+	jobID, err := Run(context.Background(), Options{Target: srv.URL, OutDir: out, SkillsDir: filepath.Join("..", "..", "skills"), CVEDir: filepath.Join("..", "..", "knowledge", "cve")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := openStore(t, out)
+	rows, err := st.DB.Query(`SELECT COUNT(*) FROM executions WHERE job_id=? AND tool='katana'`, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	rows.Next()
+	var n int
+	_ = rows.Scan(&n)
+	if n != 1 {
+		t.Fatalf("receipt katana harus 1, dapat %d", n)
 	}
 }

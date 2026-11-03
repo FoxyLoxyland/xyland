@@ -59,10 +59,40 @@ func isDomainHost(host string) bool {
 	return strings.Contains(host, ".")
 }
 
-// enrichRecon menjalankan tool eksternal bila tersedia (spec §4 MVP):
-// httpx untuk probing/fingerprint tambahan, subfinder untuk subdomain.
+func parseKatanaJSONL(out string) []string {
+	var res []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var obj struct {
+			URL     string `json:"url"`
+			Request struct {
+				Endpoint string `json:"endpoint"`
+			} `json:"request"`
+		}
+		if json.Unmarshal([]byte(line), &obj) != nil {
+			continue
+		}
+		ep := obj.Request.Endpoint
+		if ep == "" {
+			ep = obj.URL
+		}
+		if ep != "" && !seen[ep] {
+			seen[ep] = true
+			res = append(res, ep)
+		}
+	}
+	return res
+}
+
+// enrichRecon menjalankan tool eksternal bila tersedia (spec §4):
+// httpx untuk probing/fingerprint tambahan, subfinder untuk subdomain,
+// katana untuk crawling endpoint (mengembalikan URL berparameter tambahan).
 // Semua hasil tercatat sebagai receipt; kegagalan tool tidak menghentikan flow.
-func enrichRecon(ctx context.Context, opts Options, st *store.Store, jobID string, sc *scope.Scope) {
+func enrichRecon(ctx context.Context, opts Options, st *store.Store, jobID string, sc *scope.Scope) []string {
 	hc := tools.NewClient()
 	target := opts.Target
 	u, _ := url.Parse(target)
@@ -84,6 +114,22 @@ func enrichRecon(ctx context.Context, opts Options, st *store.Store, jobID strin
 					_, _ = st.AddAsset(store.Asset{JobID: jobID, URL: r.URL, StatusCode: r.StatusCode, Title: r.Title, Fingerprint: fp, ExecutionID: execID})
 				}
 				emit(opts, engine.StateRecon, "tool", "httpx: "+r.URL+" tech="+strings.Join(r.Tech, ","))
+			}
+		}
+	}
+
+	var extraParams []string
+	if tools.ExternalAvailable("katana") {
+		out, code, err := tools.RunExternal(ctx, "katana", "-silent", "-jsonl", "-d", "2", "-u", target)
+		execID, _ := st.RecordExecution(jobID, "katana", target, code, "eksternal via PATH, depth 2")
+		_ = execID
+		if err == nil {
+			eps := parseKatanaJSONL(out)
+			emit(opts, engine.StateRecon, "tool", "katana: "+itoa(len(eps))+" endpoint")
+			for _, ep := range eps {
+				if strings.Contains(ep, "?") && sc.Allows(ep) {
+					extraParams = append(extraParams, ep)
+				}
 			}
 		}
 	}
@@ -113,6 +159,7 @@ func enrichRecon(ctx context.Context, opts Options, st *store.Store, jobID strin
 			}
 		}
 	}
+	return extraParams
 }
 
 func itoa(n int) string {

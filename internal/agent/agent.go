@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FoxyLoxyland/xyland/internal/browser"
 	"github.com/FoxyLoxyland/xyland/internal/engine"
 	"github.com/FoxyLoxyland/xyland/internal/knowledge"
 	"github.com/FoxyLoxyland/xyland/internal/llm"
@@ -78,6 +79,7 @@ func Run(ctx context.Context, opts Options) (string, error) {
 		return "", err
 	}
 	defer st.DB.Close()
+	defer browser.Close()
 
 	jobID := opts.ResumeID
 	resuming := jobID != ""
@@ -157,7 +159,13 @@ func Run(ctx context.Context, opts Options) (string, error) {
 				paramURLs = append(paramURLs, abs)
 			}
 		}
-		enrichRecon(ctx, opts, st, jobID, sc)
+		for _, ep := range enrichRecon(ctx, opts, st, jobID, sc) {
+			if !seen[ep] {
+				seen[ep] = true
+				paramURLs = append(paramURLs, ep)
+				emit(opts, engine.StateRecon, "tool", "katana endpoint berparameter: "+ep)
+			}
+		}
 		assets, _ = st.Assets(jobID)
 		advance(engine.StateFingerprint)
 		emit(opts, engine.StateFingerprint, "info", "fingerprint: "+tools.Fingerprint(pr))
@@ -482,6 +490,33 @@ func checkReflected(ctx context.Context, opts Options, st *store.Store, jobID st
 		if hits == 1 {
 			status = "inconclusive"
 			evidence = "refleksi tidak stabil (1/2 run)"
+		}
+		// Executor browser: bukti eksekusi DOM menaikkan likely -> confirmed.
+		if status == "likely" && browser.Enabled() {
+			bp := "xyland<svg onload=document.body.setAttribute('data-xyland','pwned')>"
+			bu, _ := url.Parse(pu)
+			bq := bu.Query()
+			for k := range bq {
+				bq.Set(k, bp)
+				break
+			}
+			bu.RawQuery = bq.Encode()
+			exec, shot, berr := browser.ConfirmSVGOnload(bu.String())
+			if berr == nil && exec {
+				status = "confirmed"
+				evidence = "payload tereksekusi di DOM browser nyata (svg onload memasang marker data-xyland); refleksi HTTP " + itoa(hits) + "/2"
+				if len(shot) > 0 {
+					dir := filepath.Join(opts.OutDir, "evidence")
+					_ = os.MkdirAll(dir, 0o755)
+					sp := filepath.Join(dir, "xss-browser-"+itoa(n)+".png")
+					if os.WriteFile(sp, shot, 0o644) == nil {
+						evidence += "; screenshot bukti: " + sp
+					}
+				}
+				emit(opts, engine.StateVerdict, "verdict", "browser executor: payload XSS TEREKSEKUSI di DOM")
+			} else if berr != nil {
+				emit(opts, engine.StateVerdict, "warn", "browser executor tidak tersedia: "+berr.Error())
+			}
 		}
 		_, _ = st.AddFinding(store.Finding{JobID: jobID, Class: "xss-reflected", Title: "Reflected XSS (marker)", URL: pu, Severity: "medium", Status: status, Evidence: evidence, ExecutionID: execID})
 		emit(opts, engine.StateVerdict, "verdict", "xss-reflected "+pu+" -> "+status)

@@ -46,6 +46,12 @@ func Generate(dir, jobID, target string, findings []store.Finding, assets []stor
 		}
 		b.WriteString("\n")
 	}
+	if chains := Chains(findings); len(chains) > 0 {
+		b.WriteString("\n## Kemungkinan Chaining (saran analisis — bukan finding)\n\n")
+		for _, c := range chains {
+			b.WriteString("- " + c + "\n")
+		}
+	}
 	b.WriteString("\n---\nDihasilkan xyland — hanya finding confirmed/likely yang masuk bagian Findings (prinsip: no exploit, no report).\n")
 
 	path := filepath.Join(dir, "report.md")
@@ -183,4 +189,39 @@ func GenerateJSON(dir, jobID, target string, findings []store.Finding, assets []
 		return "", err
 	}
 	return path, nil
+}
+
+// Chains menyusun saran attack chaining DETERMINISTIK dari kombinasi finding
+// (spec §4 Later). Ini SARAN analisis, bukan finding — tidak masuk verdict.
+func Chains(findings []store.Finding) []string {
+	has := map[string]bool{}
+	var misconfigEvidence string
+	for _, f := range findings {
+		if f.Status == "confirmed" || f.Status == "likely" {
+			has[f.Class] = true
+			if f.Class == "misconfig" {
+				misconfigEvidence += f.Evidence + ";"
+			}
+		}
+	}
+	var out []string
+	if has["exposure"] {
+		out = append(out, "Exposure (file sensitif) -> unduh materi yang bocor untuk audit white-box: cari secret, kredensial, dan endpoint internal sebagai bahan hipotesis lanjutan.")
+	}
+	if has["xss-reflected"] && strings.Contains(misconfigEvidence, "cookie-no-httponly") {
+		out = append(out, "Reflected XSS + cookie tanpa HttpOnly -> rantai pencurian sesi layak diuji (dampak XSS naik dari sekadar refleksi menjadi account takeover).")
+	}
+	if has["sqli"] {
+		out = append(out, "SQLi terkonfirmasi -> eskalasi ekstraksi data adalah Level 3 (manual-only, wajib approval eksplisit); mode deteksi default xyland berhenti di sini.")
+	}
+	if has["idor"] && has["cors"] {
+		out = append(out, "IDOR + CORS berkredensial -> data objek lintas-pemilik berpotensi juga terbaca lintas-origin; prioritaskan perbaikan kontrol akses di server.")
+	}
+	if has["open-redirect"] {
+		out = append(out, "Open Redirect -> periksa apakah aplikasi punya alur OAuth/SSO: redirect terbuka dapat dirangkai untuk token theft & phishing yang meyakinkan.")
+	}
+	if has["ssrf-blind"] {
+		out = append(out, "SSRF -> rantai klasik berikutnya adalah metadata cloud (169.254.169.254) dan layanan internal; uji hanya dalam scope & level yang disetujui.")
+	}
+	return out
 }

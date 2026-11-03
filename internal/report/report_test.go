@@ -43,3 +43,18 @@ func TestGenerateJSON(t *testing.T) {
 		t.Fatal("nama file salah")
 	}
 }
+
+func TestChains(t *testing.T) {
+	fs := []store.Finding{
+		{Class: "xss-reflected", Status: "confirmed", Severity: "medium"},
+		{Class: "misconfig", Status: "confirmed", Severity: "low", Evidence: "cookie-no-httponly=sid"},
+		{Class: "exposure", Status: "false-positive", Severity: "high"},
+	}
+	chains := Chains(fs)
+	if len(chains) != 1 || !strings.Contains(chains[0], "pencurian sesi") {
+		t.Fatalf("chain XSS+cookie harus muncul tepat 1: %v", chains)
+	}
+	if len(Chains(nil)) != 0 {
+		t.Fatal("tanpa finding tidak boleh ada saran chain")
+	}
+}

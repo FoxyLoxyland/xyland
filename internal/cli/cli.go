@@ -15,6 +15,7 @@ import (
 	"github.com/FoxyLoxyland/xyland/internal/engine"
 	"github.com/FoxyLoxyland/xyland/internal/knowledge"
 	"github.com/FoxyLoxyland/xyland/internal/llm"
+	"github.com/FoxyLoxyland/xyland/internal/mcp"
 	"github.com/FoxyLoxyland/xyland/internal/skills"
 	"github.com/FoxyLoxyland/xyland/internal/theme"
 	"github.com/FoxyLoxyland/xyland/internal/tui"
@@ -41,7 +42,7 @@ func Execute() error {
 		Short: "xyland — AI pentest agent untuk bug bounty (Go)",
 		Long:  theme.Banner.Render(theme.Logo) + "\n  AI pentest agent: recon deep → hipotesis → validasi TP → PoC → report",
 	}
-	root.AddCommand(scanCmd(), resumeCmd(), skillsCmd(), cveCmd(), tuiCmd(), flowCmd())
+	root.AddCommand(scanCmd(), resumeCmd(), skillsCmd(), cveCmd(), tuiCmd(), flowCmd(), mcpCmd())
 	root.AddCommand(&cobra.Command{
 		Use: "version", Short: "Tampilkan versi",
 		Run: func(cmd *cobra.Command, args []string) { fmt.Println("xyland", version) },
@@ -238,5 +239,24 @@ func tuiCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&outDir, "out", "o", "results", "direktori hasil (ledger)")
+	return c
+}
+
+func mcpCmd() *cobra.Command {
+	var outDir string
+	c := &cobra.Command{
+		Use:   "mcp",
+		Short: "Jalankan sebagai MCP server (stdio) untuk klien AI — tools: flow, skills, cves, scan",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root := repoRoot()
+			srv := &mcp.Server{
+				SkillsDir: filepath.Join(root, "skills"),
+				CVEDir:    filepath.Join(root, "knowledge", "cve"),
+				OutDir:    outDir,
+			}
+			return srv.Serve()
+		},
+	}
+	c.Flags().StringVarP(&outDir, "out", "o", "results-mcp", "direktori hasil untuk tool scan")
 	return c
 }

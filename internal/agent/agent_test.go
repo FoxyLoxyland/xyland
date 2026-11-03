@@ -71,6 +71,7 @@ func labServer(t *testing.T) *httptest.Server {
 }
 
 func TestRunEndToEnd(t *testing.T) {
+	t.Setenv("XYLAND_BROWSER", "off") // deterministik: konfirmasi browser diuji terpisah
 	srv := labServer(t)
 	out := t.TempDir()
 	jobID, err := Run(context.Background(), Options{

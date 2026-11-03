@@ -59,3 +59,12 @@ Semua item "In Scope — v0.1 (MVP)" di `docs/01-SPEC.md` §4 sekarang tercentan
 - **--dry-run** (FR-09): berhenti di RETRIEVAL, nol finding, state job berhenti di RETRIEVAL.
 
 Test bertambah: config, parser httpx/subfinder/nuclei, dedup/prioritas/JSON report, integrasi tool eksternal palsu (fake binaries di PATH), IDOR dua sesi, dan dry-run — semua hijau. Demo live: IDOR `/profile` confirmed (sementara `/item` jujur *likely* karena kontrolnya sendiri ambigu), report.json terbit, coverage 5/5.
+
+## Update v0.5 — pasca-MVP: browser executor, katana, chaining, MCP (3 Nov 2026)
+
+- **Executor browser (rod v0.116.2)**: spike lolos — Chromium terunduh & berjalan headless. `internal/browser`: konfirmasi eksekusi DOM untuk reflected-XSS (payload SVG onload memasang marker `data-xyland` pada body; terverifikasi dengan kontrol negatif). Verdict naik *likely → confirmed* hanya dengan bukti eksekusi ini, plus **screenshot bukti** PNG ke `evidence/`. Nonaktifkan dengan `XYLAND_BROWSER=off`. Test browser sungguhan ada dan di-skip anggun bila Chromium tak tersedia.
+- **Katana ingestion**: crawl depth 2, endpoint berparameter (in-scope) digabung ke kolam URL uji semua check; parser teruji + receipt tercatat.
+- **Attack chaining**: bagian khusus di laporan — saran deterministik dari kombinasi finding (mis. XSS + cookie tanpa HttpOnly → pencurian sesi; SQLi → pengingat Level 3). Dilabeli jelas sebagai saran, bukan finding.
+- **Mode MCP server** (`xyland mcp`): JSON-RPC 2.0 stdio, tools `xyland_flow`, `xyland_skills`, `xyland_cves`, `xyland_scan` (dengan opsi dry_run) — xyland bisa dipanggil dari klien AI lain; scope & safety tetap ditegakkan agent. Teruji unit (initialize/list/call) + smoke test live.
+- Demo live: reflected-XSS kini **confirmed via browser** (sebelumnya mentok likely), screenshot tersimpan, chaining muncul di laporan, MCP menjawab initialize & tools/list dengan benar.
+- Masih di luar jangkauan sesi ini: adapter Eino (lapisan LLM saat ini cukup; adapter menyusul spike 9Router), ffuf/directory fuzzing, mode monitoring terjadwal di VPS, screenshot untuk kelas finding selain XSS.
