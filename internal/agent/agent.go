@@ -186,6 +186,7 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	hasRedirectParam := false
 	hasFileParam := false
 	hasIDParam := false
+	hasSSRFParam := false
 	for _, pu := range paramURLs {
 		u, _ := url.Parse(pu)
 		for k := range u.Query() {
@@ -194,6 +195,9 @@ func Run(ctx context.Context, opts Options) (string, error) {
 			}
 			if fileParams[strings.ToLower(k)] {
 				hasFileParam = true
+			}
+			if ssrfParams[strings.ToLower(k)] {
+				hasSSRFParam = true
 			}
 			if idParams[strings.ToLower(k)] {
 				if _, err := strconv.Atoi(u.Query().Get(k)); err == nil {
@@ -206,6 +210,9 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	// ---- HYPOTHESIS ----
 	advance(engine.StateHypothesis)
 	hyps := buildHypotheses(fpText, linksHaveParams, hasRedirectParam, hasFileParam)
+	if hasSSRFParam {
+		hyps = append(hyps, Hypothesis{Class: "ssrf-blind", Reason: "parameter mirip URL ditemukan — kandidat SSRF, dibuktikan via callback OOB", Impact: 8, Confidence: 0.4, Difficulty: 3, Score: 8 * 0.4 / 3})
+	}
 	if hasIDParam && opts.AuthA != "" && opts.AuthB != "" {
 		hyps = append(hyps, Hypothesis{Class: "idor", Reason: "parameter id numerik + dua sesi uji tersedia — auth differential", Impact: 8, Confidence: 0.5, Difficulty: 3, Score: 8 * 0.5 / 3})
 	}
@@ -290,6 +297,8 @@ func Run(ctx context.Context, opts Options) (string, error) {
 				checkCORS(ctx, opts, st, jobID, opts.Target)
 			case "idor":
 				checkIDOR(ctx, opts, st, jobID, paramURLs)
+			case "ssrf-blind":
+				checkSSRFBlind(ctx, opts, st, jobID, paramURLs)
 			}
 		}
 		runNuclei(ctx, opts, st, jobID, opts.Target)
@@ -314,6 +323,31 @@ func Run(ctx context.Context, opts Options) (string, error) {
 					_ = st.UpdateFindingStatus(f.ID, f.Status, p)
 					emit(opts, engine.StatePoC, "info", "PoC dibuat: "+p)
 				}
+			}
+		}
+	}
+
+	// Screenshot bukti untuk finding confirmed (maks 3, kelas apa pun) via browser executor.
+	if browser.Enabled() {
+		shots := 0
+		for _, f := range findings {
+			if shots >= 3 {
+				break
+			}
+			if f.Status != "confirmed" || strings.Contains(f.Evidence, "screenshot bukti:") {
+				continue
+			}
+			shot, err := browser.ScreenshotURL(f.URL)
+			if err != nil || len(shot) == 0 {
+				continue
+			}
+			dir := filepath.Join(opts.OutDir, "evidence")
+			_ = os.MkdirAll(dir, 0o755)
+			sp := filepath.Join(dir, fmt.Sprintf("shot-%d-%s.png", f.ID, f.Class))
+			if os.WriteFile(sp, shot, 0o644) == nil {
+				_ = st.UpdateFindingEvidence(f.ID, f.Evidence+"; screenshot bukti: "+sp)
+				shots++
+				emit(opts, engine.StatePoC, "info", "screenshot bukti: "+sp)
 			}
 		}
 	}
@@ -372,7 +406,7 @@ func buildHypotheses(fp string, hasParams, hasRedirect, hasFileParam bool) []Hyp
 }
 
 func llmAssist(ctx context.Context, cfg llm.Config, fp string, hyps []Hypothesis) string {
-	cl := llm.New(cfg)
+	cl := llm.NewChatModel(cfg)
 	hj, _ := json.Marshal(hyps)
 	msgs := []llm.Message{
 		{Role: "system", Content: "Kamu penilai hipotesis pentest. Balas SINGKAT satu kalimat Bahasa Indonesia tentang hipotesis mana yang paling menjanjikan dan kenapa. Jangan membuat finding baru."},

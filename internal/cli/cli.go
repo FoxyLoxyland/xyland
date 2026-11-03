@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/FoxyLoxyland/xyland/internal/llm"
 	"github.com/FoxyLoxyland/xyland/internal/mcp"
 	"github.com/FoxyLoxyland/xyland/internal/skills"
+	"github.com/FoxyLoxyland/xyland/internal/store"
 	"github.com/FoxyLoxyland/xyland/internal/theme"
 	"github.com/FoxyLoxyland/xyland/internal/tui"
 )
@@ -42,7 +44,7 @@ func Execute() error {
 		Short: "xyland — AI pentest agent untuk bug bounty (Go)",
 		Long:  theme.Banner.Render(theme.Logo) + "\n  AI pentest agent: recon deep → hipotesis → validasi TP → PoC → report",
 	}
-	root.AddCommand(scanCmd(), resumeCmd(), skillsCmd(), cveCmd(), tuiCmd(), flowCmd(), mcpCmd())
+	root.AddCommand(scanCmd(), resumeCmd(), skillsCmd(), cveCmd(), tuiCmd(), flowCmd(), mcpCmd(), monitorCmd())
 	root.AddCommand(&cobra.Command{
 		Use: "version", Short: "Tampilkan versi",
 		Run: func(cmd *cobra.Command, args []string) { fmt.Println("xyland", version) },
@@ -258,5 +260,74 @@ func mcpCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVarP(&outDir, "out", "o", "results-mcp", "direktori hasil untuk tool scan")
+	return c
+}
+
+func monitorCmd() *cobra.Command {
+	var target, scopeFile, outDir string
+	var every time.Duration
+	var once bool
+	c := &cobra.Command{
+		Use:   "monitor",
+		Short: "Monitoring terjadwal: scan berulang + laporkan finding BARU dan yang RESOLVED antar run",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if target == "" {
+				return fmt.Errorf("wajib: -t/--target")
+			}
+			root := repoRoot()
+			for {
+				stPrev, _ := store.Open(filepath.Join(outDir, "xyland.db"))
+				prevID := ""
+				if stPrev != nil {
+					prevID, _ = stPrev.LatestJobID("")
+					stPrev.DB.Close()
+				}
+				jobID, err := agent.Run(context.Background(), agent.Options{
+					Target: target, ScopeFile: scopeFile, OutDir: outDir,
+					SkillsDir: filepath.Join(root, "skills"), CVEDir: filepath.Join(root, "knowledge", "cve"),
+					OnEvent: printEvent,
+				})
+				if err != nil {
+					return err
+				}
+				if prevID != "" && prevID != jobID {
+					st, _ := store.Open(filepath.Join(outDir, "xyland.db"))
+					prevF, _ := st.Findings(prevID)
+					currF, _ := st.Findings(jobID)
+					newF, resF := agent.DiffFindings(prevF, currF)
+					st.DB.Close()
+					fmt.Println("\n" + theme.Chip.Render("MONITOR DIFF") +
+						fmt.Sprintf("  baru: %d · resolved: %d (vs job %s)", len(newF), len(resF), prevID))
+					for _, f := range newF {
+						fmt.Println("  " + theme.Danger.Render("+ BARU") + " [" + f.Severity + "] " + f.Title + " — " + f.URL)
+					}
+					for _, f := range resF {
+						fmt.Println("  " + theme.OK.Render("✔ RESOLVED") + " " + f.Title + " — " + f.URL)
+					}
+					var b strings.Builder
+					fmt.Fprintf(&b, "# Monitor Diff\n\n- Job sekarang: %s\n- Job sebelumnya: %s\n- Baru: %d\n- Resolved: %d\n\n", jobID, prevID, len(newF), len(resF))
+					for _, f := range newF {
+						fmt.Fprintf(&b, "- BARU [%s] %s — %s (%s)\n", f.Severity, f.Title, f.URL, f.Status)
+					}
+					for _, f := range resF {
+						fmt.Fprintf(&b, "- RESOLVED %s — %s\n", f.Title, f.URL)
+					}
+					_ = os.WriteFile(filepath.Join(outDir, "monitor-diff-"+jobID+".md"), []byte(b.String()), 0o644)
+				} else {
+					fmt.Println("\n" + theme.Muted.Render("monitor: run pertama — belum ada pembanding"))
+				}
+				if once {
+					return nil
+				}
+				fmt.Println(theme.Muted.Render(fmt.Sprintf("monitor: run berikutnya dalam %s (Ctrl+C berhenti)", every)))
+				time.Sleep(every)
+			}
+		},
+	}
+	c.Flags().StringVarP(&target, "target", "t", "", "URL target")
+	c.Flags().StringVar(&scopeFile, "scope-file", "", "file scope")
+	c.Flags().StringVarP(&outDir, "out", "o", "results-monitor", "direktori hasil (ledger bersama antar run)")
+	c.Flags().DurationVar(&every, "every", 6*time.Hour, "interval antar run")
+	c.Flags().BoolVar(&once, "once", false, "jalan sekali saja (tetap hitung diff vs job sebelumnya)")
 	return c
 }

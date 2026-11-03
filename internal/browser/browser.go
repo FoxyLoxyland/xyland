@@ -83,3 +83,18 @@ func ConfirmSVGOnload(testURL string) (bool, []byte, error) {
 	}
 	return executed, shot, nil
 }
+
+// ScreenshotURL membuka URL di browser dan mengembalikan screenshot PNG.
+func ScreenshotURL(rawurl string) ([]byte, error) {
+	b, err := get()
+	if err != nil {
+		return nil, err
+	}
+	page, err := b.Page(proto.TargetCreateTarget{URL: rawurl})
+	if err != nil {
+		return nil, err
+	}
+	defer page.Close()
+	_ = page.WaitLoad()
+	return page.Screenshot(false, &proto.PageCaptureScreenshot{Format: proto.PageCaptureScreenshotFormatPng})
+}

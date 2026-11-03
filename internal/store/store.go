@@ -162,6 +162,20 @@ func (s *Store) Assets(jobID string) ([]Asset, error) {
 	return out, rows.Err()
 }
 
+// UpdateFindingEvidence memperbarui teks bukti sebuah finding (mis. menambah path screenshot).
+func (s *Store) UpdateFindingEvidence(id int64, evidence string) error {
+	_, err := s.DB.Exec(`UPDATE findings SET evidence=? WHERE id=?`, evidence, id)
+	return err
+}
+
+// LatestJobID mengembalikan id job terbaru selain yang dikecualikan ("" = tanpa kecuali).
+func (s *Store) LatestJobID(except string) (string, error) {
+	row := s.DB.QueryRow(`SELECT id FROM jobs WHERE id != ? ORDER BY created_at DESC LIMIT 1`, except)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 func (s *Store) AddNote(jobID, state, note string) error {
 	_, err := s.DB.Exec(`INSERT INTO notes(job_id,state,note,at) VALUES(?,?,?,?)`,
 		jobID, state, note, time.Now().UTC().Format(time.RFC3339))

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // labServer: target rentan + jebakan, meniru lab uji manual v0.1 dan diperluas
@@ -27,7 +28,7 @@ func labServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Set-Cookie", "sid=abc; Path=/")
 			fmt.Fprint(w, `<html><head><title>Lab Shop</title></head><body><h1>Lab</h1>`+
 				`<a href="/search?q=test">s</a> <a href="/redirect?next=/home">r</a> `+
-				`<a href="/item?id=1">i</a> <a href="/file?name=manual.txt">f</a> <a href="/profile?id=1">p</a></body></html>`)
+				`<a href="/item?id=1">i</a> <a href="/file?name=manual.txt">f</a> <a href="/profile?id=1">p</a> <a href="/fetch?url=http://example.local/">u</a></body></html>`)
 		case "/.git/config":
 			fmt.Fprint(w, "[core]\n\trepositoryformatversion = 0\n")
 		case "/.git/HEAD":
@@ -52,6 +53,15 @@ func labServer(t *testing.T) *httptest.Server {
 			} else {
 				fmt.Fprint(w, "isi file manual biasa untuk pengguna")
 			}
+		case "/fetch":
+			func() {
+				cl := &http.Client{Timeout: 3 * time.Second}
+				resp, err := cl.Get(q.Get("url"))
+				if err == nil {
+					resp.Body.Close()
+				}
+			}()
+			fmt.Fprint(w, "fetch selesai")
 		case "/profile":
 			if q.Get("id") == "999999999" {
 				fmt.Fprint(w, "pengguna tidak ditemukan")

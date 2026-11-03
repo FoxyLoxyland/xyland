@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/FoxyLoxyland/xyland/internal/engine"
@@ -57,6 +59,28 @@ func isDomainHost(host string) bool {
 		return false
 	}
 	return strings.Contains(host, ".")
+}
+
+type ffufResult struct {
+	URL    string `json:"url"`
+	Status int    `json:"status"`
+	Length int    `json:"length"`
+}
+
+func parseFFUFJSON(out string) []ffufResult {
+	var doc struct {
+		Results []ffufResult `json:"results"`
+	}
+	if json.Unmarshal([]byte(out), &doc) != nil {
+		// fallback: JSONL per baris
+		for _, line := range strings.Split(out, "\n") {
+			var r ffufResult
+			if json.Unmarshal([]byte(strings.TrimSpace(line)), &r) == nil && r.URL != "" {
+				doc.Results = append(doc.Results, r)
+			}
+		}
+	}
+	return doc.Results
 }
 
 func parseKatanaJSONL(out string) []string {
@@ -114,6 +138,24 @@ func enrichRecon(ctx context.Context, opts Options, st *store.Store, jobID strin
 					_, _ = st.AddAsset(store.Asset{JobID: jobID, URL: r.URL, StatusCode: r.StatusCode, Title: r.Title, Fingerprint: fp, ExecutionID: execID})
 				}
 				emit(opts, engine.StateRecon, "tool", "httpx: "+r.URL+" tech="+strings.Join(r.Tech, ","))
+			}
+		}
+	}
+
+	if tools.ExternalAvailable("ffuf") {
+		wl := filepath.Join(filepath.Dir(opts.SkillsDir), "wordlists", "common-paths.txt")
+		if _, err := os.Stat(wl); err == nil {
+			out, code, err := tools.RunExternal(ctx, "ffuf", "-s", "-w", wl, "-u", strings.TrimRight(target, "/")+"/FUZZ", "-mc", "200,201,204,301,302,307,401,403", "-of", "json")
+			execID, _ := st.RecordExecution(jobID, "ffuf", target, code, "wordlist bawaan repo, status terpilih")
+			if err == nil {
+				results := parseFFUFJSON(out)
+				emit(opts, engine.StateRecon, "tool", "ffuf: "+itoa(len(results))+" path ditemukan")
+				for i, r := range results {
+					if i >= 30 || !sc.Allows(r.URL) {
+						continue
+					}
+					_, _ = st.AddAsset(store.Asset{JobID: jobID, URL: r.URL, StatusCode: r.Status, Title: "", Fingerprint: "ffuf", ExecutionID: execID})
+				}
 			}
 		}
 	}

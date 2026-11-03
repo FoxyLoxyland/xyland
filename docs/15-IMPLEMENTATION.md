@@ -68,3 +68,12 @@ Test bertambah: config, parser httpx/subfinder/nuclei, dedup/prioritas/JSON repo
 - **Mode MCP server** (`xyland mcp`): JSON-RPC 2.0 stdio, tools `xyland_flow`, `xyland_skills`, `xyland_cves`, `xyland_scan` (dengan opsi dry_run) — xyland bisa dipanggil dari klien AI lain; scope & safety tetap ditegakkan agent. Teruji unit (initialize/list/call) + smoke test live.
 - Demo live: reflected-XSS kini **confirmed via browser** (sebelumnya mentok likely), screenshot tersimpan, chaining muncul di laporan, MCP menjawab initialize & tools/list dengan benar.
 - Masih di luar jangkauan sesi ini: adapter Eino (lapisan LLM saat ini cukup; adapter menyusul spike 9Router), ffuf/directory fuzzing, mode monitoring terjadwal di VPS, screenshot untuk kelas finding selain XSS.
+
+## Update v0.6 — SSRF OOB, ffuf, screenshot umum, monitor, adapter Eino (3 Nov 2026)
+
+- **SSRF blind (OOB)**: listener callback lokal bertoken unik per parameter mirip-URL; callback yang benar-benar masuk = bukti kausal → *confirmed* (sesuai `knowledge/validation/ssrf-blind.yaml`). Base callback bisa ditimpa `XYLAND_OOB_BASE` (mis. host publik/interactsh operator) — tanpa itu, target harus bisa menjangkau listener lokal (lab/LAN/VPS publik). PoC-nya menjalankan listener sendiri.
+- **ffuf**: wordlist bawaan `wordlists/common-paths.txt` (36 path), hasil status terpilih menjadi aset dengan receipt; parser JSON teruji.
+- **Screenshot umum**: semua finding *confirmed* (maks 3 per run) kini dapat screenshot bukti browser ke `evidence/`, bukan hanya XSS.
+- **`xyland monitor`**: scan berulang (`--every`, default 6 jam; `--once` untuk satu putaran) dengan diff finding reportable antar job — BARU vs RESOLVED, ditulis ke `monitor-diff-<job>.md`. Logika diff teruji unit.
+- **Adapter Eino (akhirnya)**: spike lolos (eino v0.9.22 + eino-ext openai v0.1.13, Go 1.24). `llm.NewChatModel` memilih implementasi via `XYLAND_LLM_FRAMEWORK=eino`; default tetap klien stdlib. Flow tetap milik engine xyland — Eino murni lapisan pemanggilan model, sesuai keputusan riset putaran 4. Kedua implementasi diuji terhadap mock server OpenAI-compatible yang sama.
+- Demo live: SSRF blind *confirmed* via callback OOB di lab lokal; 4 screenshot bukti terbit; monitor diff 0/0 pada run identik (benar).

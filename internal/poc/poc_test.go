@@ -6,7 +6,7 @@ import (
 )
 
 func TestGenerateAllClasses(t *testing.T) {
-	for _, class := range []string{"exposure", "xss-reflected", "open-redirect", "sqli", "path-traversal", "cors", "idor"} {
+	for _, class := range []string{"exposure", "xss-reflected", "open-redirect", "sqli", "path-traversal", "cors", "idor", "ssrf-blind"} {
 		content, ok := Generate(class, "http://lab.local/x?a=1")
 		if !ok {
 			t.Fatalf("kelas %s harus punya generator PoC", class)

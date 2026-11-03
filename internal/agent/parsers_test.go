@@ -144,3 +144,34 @@ func TestRunWithFakeKatana(t *testing.T) {
 		t.Fatalf("receipt katana harus 1, dapat %d", n)
 	}
 }
+
+func TestParseFFUF(t *testing.T) {
+	out := `{"results":[{"url":"https://a.lab/admin","status":200,"length":55},{"url":"https://a.lab/api","status":401,"length":9}]}`
+	res := parseFFUFJSON(out)
+	if len(res) != 2 || res[0].Status != 200 {
+		t.Fatalf("parse ffuf salah: %+v", res)
+	}
+}
+
+const fakeFFUF = "#!/bin/sh\nprintf '{\"results\":[{\"url\":\"https://unused.lab/admin\",\"status\":200,\"length\":10}]}\n'\n"
+
+func TestRunWithFakeFFUF(t *testing.T) {
+	t.Setenv("XYLAND_BROWSER", "off")
+	srv := labServer(t)
+	d := writeFakeBin(t, "ffuf", fakeFFUF)
+	t.Setenv("PATH", d+":"+os.Getenv("PATH"))
+	out := t.TempDir()
+	jobID, err := Run(context.Background(), Options{Target: srv.URL, OutDir: out, SkillsDir: filepath.Join("..", "..", "skills"), CVEDir: filepath.Join("..", "..", "knowledge", "cve")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := openStore(t, out)
+	rows, _ := st.DB.Query(`SELECT COUNT(*) FROM executions WHERE job_id=? AND tool='ffuf'`, jobID)
+	defer rows.Close()
+	rows.Next()
+	var n int
+	_ = rows.Scan(&n)
+	if n != 1 {
+		t.Fatalf("receipt ffuf harus 1, dapat %d", n)
+	}
+}
