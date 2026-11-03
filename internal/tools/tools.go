@@ -42,11 +42,19 @@ func NewClient() *http.Client {
 
 // Fetch mengambil satu URL tanpa mengikuti redirect.
 func Fetch(ctx context.Context, hc *http.Client, rawurl string) (*ProbeResult, error) {
+	return FetchWithHeaders(ctx, hc, rawurl, nil)
+}
+
+// FetchWithHeaders seperti Fetch, dengan header tambahan (mis. Origin untuk CORS).
+func FetchWithHeaders(ctx context.Context, hc *http.Client, rawurl string, extra map[string]string) (*ProbeResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawurl, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "xyland/0.1 (authorized security research)")
+	for k, v := range extra {
+		req.Header.Set(k, v)
+	}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, err

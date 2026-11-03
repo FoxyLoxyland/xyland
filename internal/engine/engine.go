@@ -79,7 +79,7 @@ var briefs = map[State]Brief{
 	},
 	StateExecution: {
 		State: StateExecution, Goal: "Eksekusi pengujian sesuai skill terpilih; semua tercatat sebagai receipt.",
-		Allowed:     []string{"check/exposed-files", "check/reflected-xss", "check/open-redirect", "check/misconfig", "tool/nuclei"},
+		Allowed:     []string{"check/exposed-files", "check/reflected-xss", "check/open-redirect", "check/misconfig", "check/sqli", "check/path-traversal", "check/cors", "tool/nuclei"},
 		Inputs:      []string{"selected_skills", "assets"},
 		Outputs:     []string{"raw_findings", "executions"},
 		Gate:        "setiap finding mentah terikat execution_id",

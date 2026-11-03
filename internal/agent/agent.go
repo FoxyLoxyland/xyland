@@ -59,6 +59,8 @@ func emit(opts Options, s engine.State, kind, msg string) {
 
 var redirectParams = map[string]bool{"next": true, "url": true, "redirect": true, "return": true, "target": true, "dest": true, "continue": true, "callback": true}
 
+var fileParams = map[string]bool{"file": true, "path": true, "page": true, "template": true, "doc": true, "include": true, "filename": true, "dir": true, "view": true, "name": true}
+
 // Run mengeksekusi flow penuh (atau melanjutkannya bila ResumeID diisi).
 func Run(ctx context.Context, opts Options) (string, error) {
 	if err := os.MkdirAll(opts.OutDir, 0o755); err != nil {
@@ -166,18 +168,22 @@ func Run(ctx context.Context, opts Options) (string, error) {
 		fpText = assets[0].Fingerprint
 	}
 	hasRedirectParam := false
+	hasFileParam := false
 	for _, pu := range paramURLs {
 		u, _ := url.Parse(pu)
 		for k := range u.Query() {
 			if redirectParams[strings.ToLower(k)] {
 				hasRedirectParam = true
 			}
+			if fileParams[strings.ToLower(k)] {
+				hasFileParam = true
+			}
 		}
 	}
 
 	// ---- HYPOTHESIS ----
 	advance(engine.StateHypothesis)
-	hyps := buildHypotheses(fpText, linksHaveParams, hasRedirectParam)
+	hyps := buildHypotheses(fpText, linksHaveParams, hasRedirectParam, hasFileParam)
 	// Bantuan LLM (opsional): minta penilaian ulang skor; kegagalan tidak menghentikan flow.
 	cfg := llm.ConfigFromEnv()
 	if cfg.Available() {
@@ -242,6 +248,12 @@ func Run(ctx context.Context, opts Options) (string, error) {
 				checkRedirect(ctx, opts, st, jobID, paramURLs)
 			case "misconfig":
 				checkMisconfig(opts, st, jobID, opts.Target, fpText)
+			case "sqli":
+				checkSQLi(ctx, opts, st, jobID, paramURLs)
+			case "path-traversal":
+				checkTraversal(ctx, opts, st, jobID, paramURLs)
+			case "cors":
+				checkCORS(ctx, opts, st, jobID, opts.Target)
 			}
 		}
 		advance(engine.StateVerdict)
@@ -278,18 +290,23 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	return jobID, nil
 }
 
-func buildHypotheses(fp string, hasParams, hasRedirect bool) []Hypothesis {
+func buildHypotheses(fp string, hasParams, hasRedirect, hasFileParam bool) []Hypothesis {
 	mk := func(class, reason string, impact, conf, diff float64) Hypothesis {
 		return Hypothesis{Class: class, Reason: reason, Impact: impact, Confidence: conf, Difficulty: diff, Score: impact * conf / diff}
 	}
 	hyps := []Hypothesis{
 		mk("exposure", "file sensitif terekspos adalah temuan bug bounty paling umum; tesnya murah & deterministik", 7, 0.5, 2),
+		mk("cors", "cek CORS murah (satu request Origin asing) dan verdict-nya deterministik dari header", 4, 0.5, 1),
 	}
 	if strings.Contains(fp, "missing-headers") || strings.Contains(fp, "cookie-no") {
 		hyps = append(hyps, mk("misconfig", "fingerprint menunjukkan header keamanan/flag cookie hilang", 3, 0.9, 1))
 	}
 	if hasParams {
 		hyps = append(hyps, mk("xss-reflected", "tautan berparameter ditemukan saat recon — kandidat refleksi", 6, 0.6, 3))
+		hyps = append(hyps, mk("sqli", "parameter adalah permukaan klasik SQLi; deteksi error/boolean saja (tanpa ekstraksi)", 8, 0.4, 3))
+	}
+	if hasFileParam {
+		hyps = append(hyps, mk("path-traversal", "parameter mirip nama file ditemukan — kandidat traversal", 8, 0.5, 2))
 	}
 	if hasRedirect {
 		hyps = append(hyps, mk("open-redirect", "parameter mirip redirect ditemukan pada tautan", 5, 0.6, 2))
@@ -501,4 +518,155 @@ func checkMisconfig(opts Options, st *store.Store, jobID, target, fp string) {
 	execID, _ := st.RecordExecution(jobID, "check/misconfig", target, 0, "observasi deterministik dari fingerprint")
 	_, _ = st.AddFinding(store.Finding{JobID: jobID, Class: "misconfig", Title: "Security Misconfiguration (headers/cookies)", URL: target, Severity: "low", Status: "confirmed", Evidence: strings.Join(items, "; "), ExecutionID: execID})
 	emit(opts, engine.StateVerdict, "verdict", "misconfig -> confirmed (observasi deterministik, severity jujur: low)")
+}
+
+var sqlErrorPatterns = []string{"sql syntax", "mysql_fetch", "you have an error in your sql", "sqlite3", "sqlite_", "ora-0", "pg_query", "sqlstate", "unterminated quoted string", "syntax error at or near", "odbc", "jdbc exception"}
+
+// withFirstParam mengembalikan URL uji dengan parameter pertama diganti nilainya.
+func withFirstParam(raw string, value string, pred func(k string) bool) (string, string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", "", false
+	}
+	q := u.Query()
+	for k := range q {
+		if pred == nil || pred(k) {
+			q.Set(k, value)
+			u.RawQuery = q.Encode()
+			return u.String(), q.Get(k), true
+		}
+	}
+	return "", "", false
+}
+
+func checkSQLi(ctx context.Context, opts Options, st *store.Store, jobID string, paramURLs []string) {
+	hc := tools.NewClient()
+	done := 0
+	for _, pu := range paramURLs {
+		if done >= 3 {
+			break
+		}
+		orig, err := tools.Fetch(ctx, hc, pu)
+		if err != nil {
+			continue
+		}
+		u, _ := url.Parse(pu)
+		firstVal := ""
+		for _, vs := range u.Query() {
+			if len(vs) > 0 {
+				firstVal = vs[0]
+			}
+			break
+		}
+		// 1) error-based: tambahkan kutip
+		errURL, _, ok := withFirstParam(pu, firstVal+"'", nil)
+		if !ok {
+			continue
+		}
+		execID, _ := st.RecordExecution(jobID, "check/sqli", pu, 0, "error-based + boolean-diff, deteksi saja")
+		errProbe, _ := tools.Fetch(ctx, hc, errURL)
+		errorSignal := false
+		if errProbe != nil {
+			lb := strings.ToLower(errProbe.Body)
+			for _, p := range sqlErrorPatterns {
+				if strings.Contains(lb, p) && !strings.Contains(strings.ToLower(orig.Body), p) {
+					errorSignal = true
+				}
+			}
+		}
+		// 2) boolean-diff: AND 1=1 (mirip asli) vs AND 1=2 (beda)
+		tURL, _, _ := withFirstParam(pu, firstVal+" AND 1=1", nil)
+		fURL, _, _ := withFirstParam(pu, firstVal+" AND 1=2", nil)
+		tProbe, _ := tools.Fetch(ctx, hc, tURL)
+		fProbe, _ := tools.Fetch(ctx, hc, fURL)
+		boolSignal := false
+		if tProbe != nil && fProbe != nil {
+			simTO := validate.Similarity(tProbe.Body, orig.Body)
+			simTF := validate.Similarity(tProbe.Body, fProbe.Body)
+			if simTO > 0.8 && simTF < 0.6 {
+				boolSignal = true
+			}
+		}
+		if !errorSignal && !boolSignal {
+			continue
+		}
+		done++
+		// ulangi sinyal pemenang untuk kestabilan (repeat 2)
+		status := "likely"
+		evidence := "sinyal boolean-diff: respons AND 1=1 mirip baseline, AND 1=2 berbeda — SQLi boolean-based kemungkinan"
+		if errorSignal {
+			again, _ := tools.Fetch(ctx, hc, errURL)
+			stable := false
+			if again != nil {
+				lb := strings.ToLower(again.Body)
+				for _, p := range sqlErrorPatterns {
+					if strings.Contains(lb, p) {
+						stable = true
+					}
+				}
+			}
+			if stable {
+				status = "confirmed"
+				evidence = "error SQL khas database muncul saat kutip disuntikkan (2/2 run) dan tidak ada di baseline — deteksi saja, TIDAK ada ekstraksi data"
+			} else {
+				evidence = "error SQL muncul 1/2 run — tidak stabil"
+				status = "inconclusive"
+			}
+		}
+		_, _ = st.AddFinding(store.Finding{JobID: jobID, Class: "sqli", Title: "SQL Injection (deteksi)", URL: pu, Severity: "high", Status: status, Evidence: evidence, ExecutionID: execID})
+		emit(opts, engine.StateVerdict, "verdict", "sqli "+pu+" -> "+status)
+	}
+}
+
+func checkTraversal(ctx context.Context, opts Options, st *store.Store, jobID string, paramURLs []string) {
+	hc := tools.NewClient()
+	payload := "../../../../etc/passwd"
+	marker := "root:x:0:0:"
+	for _, pu := range paramURLs {
+		testURL, _, ok := withFirstParam(pu, payload, func(k string) bool { return fileParams[strings.ToLower(k)] })
+		if !ok {
+			continue
+		}
+		execID, _ := st.RecordExecution(jobID, "check/path-traversal", testURL, 0, "marker /etc/passwd, repeat 2")
+		hits := 0
+		for i := 0; i < 2; i++ {
+			pr, err := tools.Fetch(ctx, hc, testURL)
+			if err == nil && strings.Contains(pr.Body, marker) {
+				hits++
+			}
+		}
+		if hits == 0 {
+			continue
+		}
+		status := "inconclusive"
+		evidence := "marker passwd muncul 1/2 run"
+		if hits == 2 {
+			status = "confirmed"
+			evidence = "isi khas /etc/passwd (root:x:0:0:) terbaca lewat traversal 2/2 run — file di luar webroot terjangkau"
+		}
+		_, _ = st.AddFinding(store.Finding{JobID: jobID, Class: "path-traversal", Title: "Path Traversal", URL: pu, Severity: "high", Status: status, Evidence: evidence, ExecutionID: execID})
+		emit(opts, engine.StateVerdict, "verdict", "path-traversal "+pu+" -> "+status)
+	}
+}
+
+func checkCORS(ctx context.Context, opts Options, st *store.Store, jobID, target string) {
+	hc := tools.NewClient()
+	origin := "https://evil.xyland.invalid"
+	execID, _ := st.RecordExecution(jobID, "check/cors", target, 0, "Origin asing + cek kredensial")
+	pr, err := tools.FetchWithHeaders(ctx, hc, target, map[string]string{"Origin": origin})
+	if err != nil {
+		return
+	}
+	acao := pr.Headers.Get("Access-Control-Allow-Origin")
+	acac := strings.EqualFold(pr.Headers.Get("Access-Control-Allow-Credentials"), "true")
+	if acao != origin && acao != "*" {
+		return // tidak ada refleksi — bukan finding
+	}
+	status, sev, evidence := "likely", "low", "Access-Control-Allow-Origin memantulkan Origin asing ("+acao+") tanpa kredensial"
+	if acao == origin && acac {
+		status, sev = "confirmed", "medium"
+		evidence = "Origin asing dipantulkan PERSIS dan Access-Control-Allow-Credentials: true — kombinasi berbahaya (CSRF-baca lintas origin berkredensial)"
+	}
+	_, _ = st.AddFinding(store.Finding{JobID: jobID, Class: "cors", Title: "CORS Misconfiguration", URL: target, Severity: sev, Status: status, Evidence: evidence, ExecutionID: execID})
+	emit(opts, engine.StateVerdict, "verdict", "cors -> "+status)
 }

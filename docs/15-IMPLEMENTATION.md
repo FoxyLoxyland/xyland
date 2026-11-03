@@ -37,3 +37,10 @@ Lab lokal (server Python rentan + jebakan SPA-200): `.git/config` & `.git/HEAD` 
 3. Wrapper library ProjectDiscovery dengan interface + pin (nuclei/httpx/katana) & spike CGO katana vs modernc.
 4. Check IDOR/auth & SQLi detection dari validation rules yang sudah ada di `knowledge/validation/`.
 5. Eval harness sesuai ambang riset putaran 4 (Juice Shop/DVWA/vulhub).
+
+## Update v0.2 — fitur per-fitur + test + CI (3 Nov 2026)
+
+- **Check baru**: SQLi detection (error-based terkonfirmasi 2/2 + boolean-differential untuk *likely*; deteksi saja, tanpa ekstraksi), path traversal (marker `/etc/passwd` + kontrol nama jinak), CORS (refleksi Origin asing; berkredensial = confirmed/medium). Ketiganya lengkap dengan generator PoC self-verifying.
+- **Test**: unit test untuk engine, scope, validate, store, skills, knowledge, poc + **integration test end-to-end** (`internal/agent/agent_test.go`) melawan lab `httptest` yang meniru target rentan + jebakan SPA-200. `go test ./...` hijau semua paket.
+- **CI**: `.github/workflows/ci.yml` (GitHub Actions): gofmt check → `go vet` → `go test ./...` → build → smoke test CLI (`version/flow/skills/cve`). Go 1.24, `GOTOOLCHAIN=local`, `CGO_ENABLED=0` — sama dengan `Makefile` lokal (`make ci`).
+- Uji live tambahan vs lab lokal yang diperluas: 9 verdict sesuai harapan (termasuk sqli/traversal/cors confirmed, `.env` jebakan tetap false-positive).
