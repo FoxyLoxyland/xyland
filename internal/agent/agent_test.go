@@ -27,7 +27,7 @@ func labServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Set-Cookie", "sid=abc; Path=/")
 			fmt.Fprint(w, `<html><head><title>Lab Shop</title></head><body><h1>Lab</h1>`+
 				`<a href="/search?q=test">s</a> <a href="/redirect?next=/home">r</a> `+
-				`<a href="/item?id=1">i</a> <a href="/file?name=manual.txt">f</a></body></html>`)
+				`<a href="/item?id=1">i</a> <a href="/file?name=manual.txt">f</a> <a href="/profile?id=1">p</a></body></html>`)
 		case "/.git/config":
 			fmt.Fprint(w, "[core]\n\trepositoryformatversion = 0\n")
 		case "/.git/HEAD":
@@ -51,6 +51,12 @@ func labServer(t *testing.T) *httptest.Server {
 				fmt.Fprint(w, "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n")
 			} else {
 				fmt.Fprint(w, "isi file manual biasa untuk pengguna")
+			}
+		case "/profile":
+			if q.Get("id") == "999999999" {
+				fmt.Fprint(w, "pengguna tidak ditemukan")
+			} else {
+				fmt.Fprint(w, "Profil Pengguna Alice — email alice@lab.local — alamat Jalan Kenanga 12 — member sejak 2021 — status aktif")
 			}
 		case "/redirect":
 			w.Header().Set("Location", q.Get("next"))

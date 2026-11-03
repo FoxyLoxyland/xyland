@@ -5,12 +5,15 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +42,10 @@ type Options struct {
 	SkillsDir string
 	CVEDir    string
 	ResumeID  string
+	DryRun    bool       // FR-09: berhenti sebelum eksekusi aktif
+	AuthA     string     // cookie sesi A untuk auth-differential (IDOR)
+	AuthB     string     // cookie sesi B
+	LLM       llm.Config // bila kosong, dibaca dari env
 	OnEvent   func(Event)
 }
 
@@ -75,7 +82,7 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	jobID := opts.ResumeID
 	resuming := jobID != ""
 	if !resuming {
-		jobID = "job-" + time.Now().Format("20060102150405")
+		jobID = "job-" + time.Now().Format("20060102150405") + "-" + randSuffix()
 		if err := st.CreateJob(jobID, opts.Target); err != nil {
 			return "", err
 		}
@@ -150,6 +157,7 @@ func Run(ctx context.Context, opts Options) (string, error) {
 				paramURLs = append(paramURLs, abs)
 			}
 		}
+		enrichRecon(ctx, opts, st, jobID, sc)
 		assets, _ = st.Assets(jobID)
 		advance(engine.StateFingerprint)
 		emit(opts, engine.StateFingerprint, "info", "fingerprint: "+tools.Fingerprint(pr))
@@ -169,6 +177,7 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	}
 	hasRedirectParam := false
 	hasFileParam := false
+	hasIDParam := false
 	for _, pu := range paramURLs {
 		u, _ := url.Parse(pu)
 		for k := range u.Query() {
@@ -178,14 +187,25 @@ func Run(ctx context.Context, opts Options) (string, error) {
 			if fileParams[strings.ToLower(k)] {
 				hasFileParam = true
 			}
+			if idParams[strings.ToLower(k)] {
+				if _, err := strconv.Atoi(u.Query().Get(k)); err == nil {
+					hasIDParam = true
+				}
+			}
 		}
 	}
 
 	// ---- HYPOTHESIS ----
 	advance(engine.StateHypothesis)
 	hyps := buildHypotheses(fpText, linksHaveParams, hasRedirectParam, hasFileParam)
+	if hasIDParam && opts.AuthA != "" && opts.AuthB != "" {
+		hyps = append(hyps, Hypothesis{Class: "idor", Reason: "parameter id numerik + dua sesi uji tersedia — auth differential", Impact: 8, Confidence: 0.5, Difficulty: 3, Score: 8 * 0.5 / 3})
+	}
 	// Bantuan LLM (opsional): minta penilaian ulang skor; kegagalan tidak menghentikan flow.
-	cfg := llm.ConfigFromEnv()
+	cfg := opts.LLM
+	if !cfg.Available() {
+		cfg = llm.ConfigFromEnv()
+	}
 	if cfg.Available() {
 		if note := llmAssist(ctx, cfg, fpText, hyps); note != "" {
 			emit(opts, engine.StateHypothesis, "agent", note)
@@ -225,6 +245,12 @@ func Run(ctx context.Context, opts Options) (string, error) {
 		}
 	}
 
+	if opts.DryRun {
+		emit(opts, engine.StateRetrieval, "warn", "DRY-RUN: berhenti di sini — tidak ada eksekusi aktif ke target (FR-09)")
+		_ = st.SetState(jobID, string(engine.StateRetrieval))
+		return jobID, nil
+	}
+
 	// ---- EXECUTION + VERDICT ----
 	existing, _ := st.Findings(jobID)
 	if resuming && len(existing) > 0 {
@@ -254,15 +280,22 @@ func Run(ctx context.Context, opts Options) (string, error) {
 				checkTraversal(ctx, opts, st, jobID, paramURLs)
 			case "cors":
 				checkCORS(ctx, opts, st, jobID, opts.Target)
+			case "idor":
+				checkIDOR(ctx, opts, st, jobID, paramURLs)
 			}
 		}
+		runNuclei(ctx, opts, st, jobID, opts.Target)
 		advance(engine.StateVerdict)
 		emit(opts, engine.StateVerdict, "verdict", "verdict dihitung deterministik dari positive/control/baseline")
 	}
 
 	// ---- POC ----
 	advance(engine.StatePoC)
-	findings, _ := st.Findings(jobID)
+	rawFindings, _ := st.Findings(jobID)
+	findings := report.Dedup(rawFindings)
+	if len(findings) != len(rawFindings) {
+		emit(opts, engine.StatePoC, "info", fmt.Sprintf("triage/dedup: %d finding mentah -> %d unik", len(rawFindings), len(findings)))
+	}
 	for _, f := range findings {
 		if (f.Status == "confirmed" || f.Status == "likely") && f.PocPath == "" {
 			if content, ok := poc.Generate(f.Class, f.URL); ok {
@@ -279,11 +312,16 @@ func Run(ctx context.Context, opts Options) (string, error) {
 
 	// ---- REPORT ----
 	advance(engine.StateReport)
-	findings, _ = st.Findings(jobID)
+	fetched, _ := st.Findings(jobID)
+	findings = report.Dedup(fetched)
 	assets, _ = st.Assets(jobID)
-	rp, err := report.Generate(opts.OutDir, jobID, opts.Target, findings, assets)
+	cov := buildCoverage(st, jobID, paramURLs, findings)
+	rp, err := report.Generate(opts.OutDir, jobID, opts.Target, findings, assets, cov)
 	if err != nil {
 		return jobID, err
+	}
+	if jp, jerr := report.GenerateJSON(opts.OutDir, jobID, opts.Target, findings, assets); jerr == nil {
+		emit(opts, engine.StateReport, "info", "laporan JSON: "+jp)
 	}
 	advance(engine.StateDone)
 	emit(opts, engine.StateReport, "info", "laporan: "+rp)
@@ -669,4 +707,41 @@ func checkCORS(ctx context.Context, opts Options, st *store.Store, jobID, target
 	}
 	_, _ = st.AddFinding(store.Finding{JobID: jobID, Class: "cors", Title: "CORS Misconfiguration", URL: target, Severity: sev, Status: status, Evidence: evidence, ExecutionID: execID})
 	emit(opts, engine.StateVerdict, "verdict", "cors -> "+status)
+}
+
+// randSuffix memberi akhiran acak pendek agar job id unik walau mulai di detik yang sama.
+func randSuffix() string {
+	b := make([]byte, 3)
+	if _, err := rand.Read(b); err != nil {
+		return "x"
+	}
+	return hex.EncodeToString(b)
+}
+
+var idParams = map[string]bool{"id": true, "user_id": true, "uid": true, "account_id": true, "order_id": true, "profile_id": true, "customer_id": true, "invoice_id": true}
+
+// buildCoverage menyusun info coverage-gap (FR-14): URL berparameter yang ditemukan
+// saat recon vs yang benar-benar muncul sebagai subjek pengujian (finding/execution).
+func buildCoverage(st *store.Store, jobID string, paramURLs []string, findings []store.Finding) report.Coverage {
+	tested := map[string]bool{}
+	base := func(raw string) string {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return raw
+		}
+		return u.Scheme + "://" + u.Host + u.Path
+	}
+	for _, f := range findings {
+		tested[base(f.URL)] = true
+	}
+	cov := report.Coverage{}
+	for _, pu := range paramURLs {
+		cov.Discovered = append(cov.Discovered, pu)
+		if tested[base(pu)] {
+			cov.Tested = append(cov.Tested, pu)
+		} else {
+			cov.Untested = append(cov.Untested, pu)
+		}
+	}
+	return cov
 }

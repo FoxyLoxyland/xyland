@@ -30,14 +30,14 @@ Pembeda vs tools existing (hipotesis, divalidasi research):
 ## 4. Scope
 
 ### In Scope — v0.1 (MVP)
-- [ ] Input target: single domain / list domain, file scope (in-scope & out-of-scope)
-- [ ] Recon subdomain (wrapper/integrasi subfinder)
-- [ ] Live host probing (httpx) + tech fingerprint
-- [ ] Vulnerability scanning (nuclei dengan template terkurasi)
-- [ ] AI triage: ranking severity, dedup, penjelasan kenapa finding penting
-- [ ] Output: JSON + Markdown report per target
-- [ ] Konfigurasi via YAML + env untuk LLM provider (OpenAI-compatible API — termasuk gateway self-hosted seperti 9Router)
-- [ ] Scope enforcement: tool menolak scan host di luar scope yang didefinisikan user
+- [x] Input target: single domain / list domain, file scope (in-scope & out-of-scope) — SELESAI v0.3
+- [x] Recon subdomain (wrapper/integrasi subfinder) — SELESAI v0.3
+- [x] Live host probing (httpx) + tech fingerprint — SELESAI v0.3
+- [x] Vulnerability scanning (nuclei dengan template terkurasi) — SELESAI v0.3
+- [x] AI triage: ranking severity, dedup, penjelasan kenapa finding penting — SELESAI v0.3
+- [x] Output: JSON + Markdown report per target — SELESAI v0.3
+- [x] Konfigurasi via YAML + env untuk LLM provider (OpenAI-compatible API — termasuk gateway self-hosted seperti 9Router) — SELESAI v0.3
+- [x] Scope enforcement: tool menolak scan host di luar scope yang didefinisikan user — SELESAI v0.1
 
 ### Out of Scope — v0.1 (sengaja TIDAK dibuat dulu)
 - Eksploitasi otomatis agresif / auto-exploit tanpa konfirmasi manusia

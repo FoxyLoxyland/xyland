@@ -11,8 +11,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/FoxyLoxyland/xyland/internal/agent"
+	"github.com/FoxyLoxyland/xyland/internal/config"
 	"github.com/FoxyLoxyland/xyland/internal/engine"
 	"github.com/FoxyLoxyland/xyland/internal/knowledge"
+	"github.com/FoxyLoxyland/xyland/internal/llm"
 	"github.com/FoxyLoxyland/xyland/internal/skills"
 	"github.com/FoxyLoxyland/xyland/internal/theme"
 	"github.com/FoxyLoxyland/xyland/internal/tui"
@@ -66,34 +68,83 @@ func printEvent(ev agent.Event) {
 }
 
 func scanCmd() *cobra.Command {
-	var target, scopeFile, outDir, resume string
+	var target, scopeFile, outDir, resume, targetsFile, configPath, authA, authB string
+	var dryRun bool
 	c := &cobra.Command{
 		Use:   "scan",
 		Short: "Jalankan flow penuh: scope → recon → hipotesis → eksekusi → verdict → PoC → report",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if target == "" && resume == "" {
-				return fmt.Errorf("wajib: -t/--target (atau --resume <job-id>)")
+			// daftar target: -t boleh koma-terpisah, atau --targets-file (satu URL per baris)
+			var targets []string
+			if target != "" {
+				for _, t := range strings.Split(target, ",") {
+					if t = strings.TrimSpace(t); t != "" {
+						targets = append(targets, t)
+					}
+				}
 			}
+			if targetsFile != "" {
+				raw, err := os.ReadFile(targetsFile)
+				if err != nil {
+					return err
+				}
+				for _, line := range strings.Split(string(raw), "\n") {
+					if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+						targets = append(targets, line)
+					}
+				}
+			}
+			if len(targets) == 0 && resume == "" {
+				return fmt.Errorf("wajib: -t/--target atau --targets-file (atau --resume <job-id>)")
+			}
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				return fmt.Errorf("config: %w", err)
+			}
+			if outDir == "results" && cfg.Scan.Out != "" {
+				outDir = cfg.Scan.Out
+			}
+			llmCfg := llm.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model}
 			fmt.Println(theme.Banner.Render(theme.Logo))
 			fmt.Println(theme.Muted.Render("  AI pentest agent — no exploit, no report"))
 			root := repoRoot()
-			jobID, err := agent.Run(context.Background(), agent.Options{
-				Target: target, ScopeFile: scopeFile, OutDir: outDir,
-				SkillsDir: filepath.Join(root, "skills"), CVEDir: filepath.Join(root, "knowledge", "cve"),
-				ResumeID: resume, OnEvent: printEvent,
-			})
-			if err != nil {
-				return err
+			run := func(tgt, resumeID string) error {
+				jobID, err := agent.Run(context.Background(), agent.Options{
+					Target: tgt, ScopeFile: scopeFile, OutDir: outDir,
+					SkillsDir: filepath.Join(root, "skills"), CVEDir: filepath.Join(root, "knowledge", "cve"),
+					ResumeID: resumeID, DryRun: dryRun, AuthA: authA, AuthB: authB, LLM: llmCfg,
+					OnEvent: printEvent,
+				})
+				if err != nil {
+					return err
+				}
+				fmt.Println("\n" + theme.OK.Render("✔ selesai") + "  job " + theme.Chip.Render(jobID) +
+					"  → " + filepath.Join(outDir, "report.md"))
+				return nil
 			}
-			fmt.Println("\n" + theme.OK.Render("✔ selesai") + "  job " + theme.Chip.Render(jobID) +
-				"  → " + filepath.Join(outDir, "report.md"))
+			if resume != "" {
+				return run(target, resume)
+			}
+			for _, t := range targets {
+				if len(targets) > 1 {
+					fmt.Println("\n" + theme.Title.Render("=== Target: "+t+" ==="))
+				}
+				if err := run(t, ""); err != nil {
+					return err
+				}
+			}
 			return nil
 		},
 	}
-	c.Flags().StringVarP(&target, "target", "t", "", "URL target (harus in-scope)")
+	c.Flags().StringVarP(&target, "target", "t", "", "URL target, boleh beberapa dipisah koma (harus in-scope)")
+	c.Flags().StringVar(&targetsFile, "targets-file", "", "file daftar target (satu URL per baris)")
 	c.Flags().StringVar(&scopeFile, "scope-file", "", "file scope (default: host target saja)")
 	c.Flags().StringVarP(&outDir, "out", "o", "results", "direktori hasil")
 	c.Flags().StringVar(&resume, "resume", "", "lanjutkan job yang ada (job-id)")
+	c.Flags().StringVar(&configPath, "config", "", "file konfigurasi YAML (default: ./xyland.yaml bila ada)")
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "berhenti sebelum eksekusi aktif (FR-09)")
+	c.Flags().StringVar(&authA, "auth-a", "", "cookie sesi A untuk auth-differential/IDOR (mis. 'session=...')")
+	c.Flags().StringVar(&authB, "auth-b", "", "cookie sesi B untuk auth-differential/IDOR")
 	return c
 }
 

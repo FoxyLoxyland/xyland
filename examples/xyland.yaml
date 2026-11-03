@@ -1,0 +1,9 @@
+# Contoh konfigurasi xyland (salin menjadi xyland.yaml di direktori kerja,
+# atau arahkan dengan --config). Env XYLAND_LLM_* selalu menimpa file ini.
+# JANGAN commit API key asli ke repo publik.
+llm:
+  base_url: "http://localhost:20128/v1"   # contoh: 9Router lokal/VPS Anda
+  api_key: ""                              # lebih aman lewat env XYLAND_LLM_API_KEY
+  model: "gpt-4o-mini"
+scan:
+  out: "results"

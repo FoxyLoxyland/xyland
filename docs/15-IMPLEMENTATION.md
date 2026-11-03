@@ -44,3 +44,18 @@ Lab lokal (server Python rentan + jebakan SPA-200): `.git/config` & `.git/HEAD` 
 - **Test**: unit test untuk engine, scope, validate, store, skills, knowledge, poc + **integration test end-to-end** (`internal/agent/agent_test.go`) melawan lab `httptest` yang meniru target rentan + jebakan SPA-200. `go test ./...` hijau semua paket.
 - **CI**: `.github/workflows/ci.yml` (GitHub Actions): gofmt check → `go vet` → `go test ./...` → build → smoke test CLI (`version/flow/skills/cve`). Go 1.24, `GOTOOLCHAIN=local`, `CGO_ENABLED=0` — sama dengan `Makefile` lokal (`make ci`).
 - Uji live tambahan vs lab lokal yang diperluas: 9 verdict sesuai harapan (termasuk sqli/traversal/cors confirmed, `.env` jebakan tetap false-positive).
+
+## Update v0.3 — MVP spec §4 ditutup (3 Nov 2026)
+
+Semua item "In Scope — v0.1 (MVP)" di `docs/01-SPEC.md` §4 sekarang tercentang:
+
+- **Multi-target**: `-t` koma-terpisah atau `--targets-file`; job id kini unik per run (akhiran acak).
+- **Konfigurasi YAML** (FR-07): `internal/config` + `examples/xyland.yaml`; env tetap menimpa file. `--config` untuk path lain.
+- **Recon eksternal beneran jalan**: httpx (JSONL → aset + tech) & subfinder (subdomain in-scope diprobe, maks 15) via PATH dengan receipt; parsernya diuji unit.
+- **Nuclei ingestion**: severity critical/high/medium, JSONL → kandidat finding (critical/high = *likely*, medium = *inconclusive*; verdict final tetap milik rule xyland), receipt terikat.
+- **Triage & dedup** (FR-04): dedup kelas+URL (status terkuat menang, data mentah tetap di ledger), skor prioritas deterministik severity × kekuatan verdict, laporan terurut prioritas.
+- **Output JSON + Markdown** (spec §4) dan **Coverage Gap** (FR-14) di laporan: URL berparameter ditemukan vs teruji vs belum teruji.
+- **IDOR auth-differential**: aktif hanya dengan `--auth-a/--auth-b`; pola A-baseline / B-lintas-pemilik / kontrol id tak dikenal; PoC membaca sesi dari env (tanpa kredensial di file).
+- **--dry-run** (FR-09): berhenti di RETRIEVAL, nol finding, state job berhenti di RETRIEVAL.
+
+Test bertambah: config, parser httpx/subfinder/nuclei, dedup/prioritas/JSON report, integrasi tool eksternal palsu (fake binaries di PATH), IDOR dua sesi, dan dry-run — semua hijau. Demo live: IDOR `/profile` confirmed (sementara `/item` jujur *likely* karena kontrolnya sendiri ambigu), report.json terbit, coverage 5/5.
