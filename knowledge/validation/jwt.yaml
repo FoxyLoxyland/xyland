@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-JWT-001
+vuln_class: jwt
+executor: http
+safety_level: 1
+positive_test:
+  description: "Token hasil modifikasi diterima server: (a) alg=none tanpa signature memberi respons setara token valid dan berbeda dari tanpa auth, atau (b) signature valid terhadap secret lemah dari daftar umum (verifikasi offline kriptografis)"
+negative_control:
+  description: "Request tanpa token / token sampah harus ditolak atau berbeda jelas dari respons terautentikasi"
+baseline:
+  description: "Respons endpoint dengan token asli yang diberikan operator"
+repeat: 2
+verdict:
+  true_positive: "kontrol negatif bersih + token modifikasi diterima (none) ATAU secret terverifikasi offline (kriptografis pasti)"
+  false_positive: "endpoint publik yang memang mengembalikan isi sama untuk semua request (baseline tidak bisa dibedakan)"
+  inconclusive: "tidak ada endpoint uji yang membedakan terautentikasi vs tidak / token tidak valid formatnya"

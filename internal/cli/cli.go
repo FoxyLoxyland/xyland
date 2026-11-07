@@ -71,7 +71,7 @@ func printEvent(ev agent.Event) {
 }
 
 func scanCmd() *cobra.Command {
-	var target, scopeFile, outDir, resume, targetsFile, configPath, authA, authB string
+	var target, scopeFile, outDir, resume, targetsFile, configPath, authA, authB, jwtTok string
 	var dryRun bool
 	c := &cobra.Command{
 		Use:   "scan",
@@ -115,7 +115,7 @@ func scanCmd() *cobra.Command {
 				jobID, err := agent.Run(context.Background(), agent.Options{
 					Target: tgt, ScopeFile: scopeFile, OutDir: outDir,
 					SkillsDir: filepath.Join(root, "skills"), CVEDir: filepath.Join(root, "knowledge", "cve"),
-					ResumeID: resumeID, DryRun: dryRun, AuthA: authA, AuthB: authB, LLM: llmCfg,
+					ResumeID: resumeID, DryRun: dryRun, AuthA: authA, AuthB: authB, JWT: jwtTok, LLM: llmCfg,
 					OnEvent: printEvent,
 				})
 				if err != nil {
@@ -148,6 +148,7 @@ func scanCmd() *cobra.Command {
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "berhenti sebelum eksekusi aktif (FR-09)")
 	c.Flags().StringVar(&authA, "auth-a", "", "cookie sesi A untuk auth-differential/IDOR (mis. 'session=...')")
 	c.Flags().StringVar(&authB, "auth-b", "", "cookie sesi B untuk auth-differential/IDOR")
+	c.Flags().StringVar(&jwtTok, "jwt", "", "token JWT untuk dianalisis (atau env XYLAND_JWT / JWT di cookie sesi)")
 	return c
 }
 

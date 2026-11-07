@@ -11,6 +11,7 @@ require (
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
 	github.com/go-rod/rod v0.116.2
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/net v0.24.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.34.5
 )

@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-CSRF-001
+vuln_class: csrf
+executor: http
+safety_level: 1
+positive_test:
+  description: "Form POST state-changing yang dapat dijangkau sesi terautentikasi tidak memuat token anti-CSRF (atau token tidak terikat sesi)"
+negative_control:
+  description: "Form sejenis DENGAN token acak per-sesi pada aplikasi yang sama — membuktikan aplikasi memang memakai pola token"
+baseline:
+  description: "Daftar form GET (bukan state-changing) tidak dihitung"
+repeat: 1
+verdict:
+  true_positive: "form POST tanpa token + autentikasi berbasis cookie (konfirmasi penuh memerlukan uji submit lintas origin berizin)"
+  false_positive: "form pada halaman publik tanpa sesi / endpoint memakai header otorisasi non-cookie (kebal CSRF klasik) / SameSite=Strict terverifikasi"
+  inconclusive: "form tidak dapat dijangkau tanpa kredensial yang tidak disediakan operator"

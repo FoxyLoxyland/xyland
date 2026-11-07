@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-XSS-DOM-001
+vuln_class: xss
+executor: browser
+safety_level: 1
+positive_test:
+  description: "Payload pada fragment (#) dieksekusi di DOM browser nyata: handler payload memasang marker data-xyland pada body"
+negative_control:
+  description: "Fragment jinak pada halaman yang sama tidak memasang marker"
+baseline:
+  description: "Halaman dimuat tanpa fragment — tidak ada marker"
+repeat: 2
+verdict:
+  true_positive: "marker terpasang oleh eksekusi payload di browser (bukti eksekusi, bukan refleksi)"
+  false_positive: "marker berasal dari konten halaman sendiri (dibantah kontrol negatif)"
+  inconclusive: "browser executor tidak tersedia / halaman memerlukan interaksi tambahan"

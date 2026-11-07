@@ -46,6 +46,7 @@ type Options struct {
 	DryRun    bool       // FR-09: berhenti sebelum eksekusi aktif
 	AuthA     string     // cookie sesi A untuk auth-differential (IDOR)
 	AuthB     string     // cookie sesi B
+	JWT       string     // token JWT untuk dianalisis (atau env XYLAND_JWT / dari cookie sesi)
 	LLM       llm.Config // bila kosong, dibaca dari env
 	OnEvent   func(Event)
 }
@@ -122,6 +123,7 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	hc := tools.NewClient()
 	var assets []store.Asset
 	var paramURLs []string
+	var pageURLs []string
 	var rootProbe *tools.ProbeResult
 
 	// ---- RECON + FINGERPRINT ----
@@ -145,16 +147,26 @@ func Run(ctx context.Context, opts Options) (string, error) {
 				emit(opts, engine.StateRecon, "tool", name+" terdeteksi di PATH (wrapper tersedia)")
 			}
 		}
-		// kumpulkan URL berparameter dari tautan (masih dalam scope)
+		// kumpulkan URL berparameter + halaman biasa dari tautan (masih dalam scope)
 		seen := map[string]bool{}
+		pageURLs = append(pageURLs, opts.Target)
 		base, _ := url.Parse(opts.Target)
 		for _, l := range pr.Links {
 			u, err := base.Parse(l)
-			if err != nil || u.RawQuery == "" {
+			if err != nil {
 				continue
 			}
 			abs := u.String()
-			if sc.Allows(abs) && !seen[abs] {
+			if !sc.Allows(abs) {
+				continue
+			}
+			if u.RawQuery == "" {
+				if len(pageURLs) < 10 {
+					pageURLs = append(pageURLs, abs)
+				}
+				continue
+			}
+			if !seen[abs] {
 				seen[abs] = true
 				paramURLs = append(paramURLs, abs)
 			}
@@ -215,6 +227,16 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	}
 	if hasIDParam && opts.AuthA != "" && opts.AuthB != "" {
 		hyps = append(hyps, Hypothesis{Class: "idor", Reason: "parameter id numerik + dua sesi uji tersedia — auth differential", Impact: 8, Confidence: 0.5, Difficulty: 3, Score: 8 * 0.5 / 3})
+	}
+	if FindJWT(opts) != "" {
+		hyps = append(hyps, Hypothesis{Class: "jwt", Reason: "token JWT tersedia — analisis offline (secret lemah) + uji alg=none ke target", Impact: 9, Confidence: 0.5, Difficulty: 2, Score: 9 * 0.5 / 2})
+	}
+	if rootProbe != nil {
+		hyps = append(hyps, Hypothesis{Class: "csrf", Reason: "inventaris form target — cek token anti-CSRF pada form POST", Impact: 5, Confidence: 0.4, Difficulty: 1, Score: 5 * 0.4 / 1})
+		hyps = append(hyps, Hypothesis{Class: "file-upload", Reason: "bila ada form upload — uji file bermarker tersimpan & tersaji", Impact: 7, Confidence: 0.3, Difficulty: 2, Score: 7 * 0.3 / 2})
+	}
+	if browser.Enabled() {
+		hyps = append(hyps, Hypothesis{Class: "xss-dom", Reason: "browser executor aktif — uji sink DOM berbasis fragment dengan eksekusi nyata", Impact: 7, Confidence: 0.3, Difficulty: 2, Score: 7 * 0.3 / 2})
 	}
 	// Bantuan LLM (opsional): minta penilaian ulang skor; kegagalan tidak menghentikan flow.
 	cfg := opts.LLM
@@ -279,6 +301,10 @@ func Run(ctx context.Context, opts Options) (string, error) {
 		if berr == nil {
 			baseBody = baseline.Body
 		}
+		pages := pageURLs
+		if len(pages) == 0 {
+			pages = []string{opts.Target}
+		}
 		for _, h := range hyps {
 			switch h.Class {
 			case "exposure":
@@ -299,6 +325,14 @@ func Run(ctx context.Context, opts Options) (string, error) {
 				checkIDOR(ctx, opts, st, jobID, paramURLs)
 			case "ssrf-blind":
 				checkSSRFBlind(ctx, opts, st, jobID, paramURLs)
+			case "jwt":
+				checkJWT(ctx, opts, st, jobID)
+			case "csrf":
+				checkCSRF(ctx, opts, st, jobID, pages)
+			case "file-upload":
+				checkUpload(ctx, opts, st, jobID, pages)
+			case "xss-dom":
+				checkDOMXSS(opts, st, jobID, pages)
 			}
 		}
 		runNuclei(ctx, opts, st, jobID, opts.Target)
@@ -313,7 +347,7 @@ func Run(ctx context.Context, opts Options) (string, error) {
 	if len(findings) != len(rawFindings) {
 		emit(opts, engine.StatePoC, "info", fmt.Sprintf("triage/dedup: %d finding mentah -> %d unik", len(rawFindings), len(findings)))
 	}
-	for _, f := range findings {
+	for _, f := range rawFindings {
 		if (f.Status == "confirmed" || f.Status == "likely") && f.PocPath == "" {
 			if content, ok := poc.Generate(f.Class, f.URL); ok {
 				dir := filepath.Join(opts.OutDir, "findings", fmt.Sprintf("%d-%s", f.ID, f.Class))

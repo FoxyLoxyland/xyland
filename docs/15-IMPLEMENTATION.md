@@ -77,3 +77,14 @@ Test bertambah: config, parser httpx/subfinder/nuclei, dedup/prioritas/JSON repo
 - **`xyland monitor`**: scan berulang (`--every`, default 6 jam; `--once` untuk satu putaran) dengan diff finding reportable antar job — BARU vs RESOLVED, ditulis ke `monitor-diff-<job>.md`. Logika diff teruji unit.
 - **Adapter Eino (akhirnya)**: spike lolos (eino v0.9.22 + eino-ext openai v0.1.13, Go 1.24). `llm.NewChatModel` memilih implementasi via `XYLAND_LLM_FRAMEWORK=eino`; default tetap klien stdlib. Flow tetap milik engine xyland — Eino murni lapisan pemanggilan model, sesuai keputusan riset putaran 4. Kedua implementasi diuji terhadap mock server OpenAI-compatible yang sama.
 - Demo live: SSRF blind *confirmed* via callback OOB di lab lokal; 4 screenshot bukti terbit; monitor diff 0/0 pada run identik (benar).
+
+## Update v0.7 — check JWT, CSRF, file-upload, DOM XSS (8 Nov 2026)
+
+Empat kelas terakhir dari library kini punya executor check + validation rule sendiri (`knowledge/validation/` kini 12 rule: + jwt, csrf, xss-dom, file-upload):
+
+- **JWT** (`--jwt` / env `XYLAND_JWT` / JWT di cookie sesi): (1) verifikasi offline signature HS* terhadap ±40 secret umum — cocok = *confirmed* kritis (kriptografi pasti); (2) uji penerimaan `alg=none` ke endpoint target dengan kontrol negatif anti-200-trap (endpoint publik yang sama untuk semua request TIDAK akan diklaim — by design); (3) higiene klaim (tanpa exp, masa berlaku > 30 hari, klaim sensitif) sebagai *likely*/low.
+- **CSRF**: inventaris form via parser HTML (golang.org/x/net/html); form POST tanpa field token anti-CSRF = *likely* — ditahan di likely secara sadar: ketiadaan token adalah bukti pasif, konfirmasi penuh butuh uji submit lintas-origin berizin. Catatan menguat: bila aplikasi memakai token di form lain, form tanpa token makin mencurigakan.
+- **File-upload**: file SVG bermarker unik diunggah lewat form upload nyata (multipart), lalu dibuktikan tersimpan & tersaji: marker utuh 2/2 + Content-Type aktif (svg/html) + kontrol negatif nama acak bersih = *confirmed*; tersaji netral = *likely*; lokasi tak terverifikasi = tanpa finding.
+- **DOM XSS**: payload fragment (#) dibuktikan dengan eksekusi browser nyata (executor yang sama dengan reflected). Pelajaran teknis: `<svg onload>` TIDAK tereksekusi bila disisipkan via innerHTML — vektor DOM memakai `<img onerror>`; svg tetap dipakai untuk refleksi server-side (parse awal).
+- Perbaikan umum: tahap PoC kini mengiterasi semua finding mentah (bukan hasil dedup) — finding sekelas/URL-sama seperti trio JWT masing-masing mendapat poc.py sendiri.
+- Demo live: JWT secret lemah *confirmed* + konfigurasi *likely*; CSRF *likely* ×2; file-upload *confirmed*; DOM XSS *confirmed* — semua dengan PoC.

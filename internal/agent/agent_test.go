@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -17,7 +18,24 @@ func labServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	spa := `<html><head><title>Lab Shop</title></head><body><h1>Lab</h1>welcome to the lab shop single page app</body></html>`
 	mux := http.NewServeMux()
+	uploads := map[string]string{}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/uploads/") {
+			w.WriteHeader(404)
+			fmt.Fprint(w, "tidak ada")
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/files/") {
+			name := strings.TrimPrefix(r.URL.Path, "/files/")
+			if c, ok := uploads[name]; ok {
+				w.Header().Set("Content-Type", "image/svg+xml")
+				fmt.Fprint(w, c)
+			} else {
+				w.WriteHeader(404)
+				fmt.Fprint(w, "tidak ada")
+			}
+			return
+		}
 		if o := r.Header.Get("Origin"); o != "" {
 			w.Header().Set("Access-Control-Allow-Origin", o)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -28,7 +46,9 @@ func labServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Set-Cookie", "sid=abc; Path=/")
 			fmt.Fprint(w, `<html><head><title>Lab Shop</title></head><body><h1>Lab</h1>`+
 				`<a href="/search?q=test">s</a> <a href="/redirect?next=/home">r</a> `+
-				`<a href="/item?id=1">i</a> <a href="/file?name=manual.txt">f</a> <a href="/profile?id=1">p</a> <a href="/fetch?url=http://example.local/">u</a></body></html>`)
+				`<a href="/item?id=1">i</a> <a href="/file?name=manual.txt">f</a> <a href="/profile?id=1">p</a> <a href="/fetch?url=http://example.local/">u</a> `+
+				`<a href="/dom">d</a> <a href="/upload">up</a>`+
+				`<form method="post" action="/settings"><input type="text" name="email"><input type="submit" value="simpan"></form></body></html>`)
 		case "/.git/config":
 			fmt.Fprint(w, "[core]\n\trepositoryformatversion = 0\n")
 		case "/.git/HEAD":
@@ -68,6 +88,27 @@ func labServer(t *testing.T) *httptest.Server {
 			} else {
 				fmt.Fprint(w, "Profil Pengguna Alice — email alice@lab.local — alamat Jalan Kenanga 12 — member sejak 2021 — status aktif")
 			}
+		case "/dom":
+			fmt.Fprint(w, `<html><head><title>DOM</title></head><body><div id="x"></div><script>window.addEventListener("load",function(){var h=location.hash.slice(1);try{h=decodeURIComponent(h)}catch(e){} document.getElementById("x").innerHTML=h;});</script></body></html>`)
+		case "/upload":
+			if r.Method == "POST" {
+				if err := r.ParseMultipartForm(1 << 20); err == nil {
+					file, hdr, err := r.FormFile("file")
+					if err == nil {
+						defer file.Close()
+						b, _ := io.ReadAll(file)
+						uploads[hdr.Filename] = string(b)
+						fmt.Fprintf(w, `<html><body>tersimpan: <a href="/files/%s">%s</a></body></html>`, hdr.Filename, hdr.Filename)
+						return
+					}
+				}
+				w.WriteHeader(400)
+				fmt.Fprint(w, "gagal")
+				return
+			}
+			fmt.Fprint(w, `<html><body><form method="post" action="/upload" enctype="multipart/form-data"><input type="file" name="file"><input type="submit" value="unggah"></form></body></html>`)
+		case "/settings":
+			fmt.Fprint(w, "tersimpan")
 		case "/redirect":
 			w.Header().Set("Location", q.Get("next"))
 			w.WriteHeader(302)
@@ -121,8 +162,10 @@ func TestRunEndToEnd(t *testing.T) {
 		"open-redirect|" + base + "/redirect?next=/home":   "confirmed",
 		"sqli|" + base + "/item?id=1":                      "confirmed",
 		"path-traversal|" + base + "/file?name=manual.txt": "confirmed",
-		"cors|" + base:      "confirmed",
-		"misconfig|" + base: "confirmed",
+		"cors|" + base:                    "confirmed",
+		"misconfig|" + base:               "confirmed",
+		"csrf|" + base:                    "likely",
+		"file-upload|" + base + "/upload": "confirmed",
 	}
 	for k, v := range want {
 		if got := byKey[k]; got != v {

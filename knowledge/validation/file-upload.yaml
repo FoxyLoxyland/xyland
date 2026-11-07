@@ -1,0 +1,16 @@
+# Validation rule xyland — format gabungan nuclei + afrog + ekstensi xyland (docs/10, docs/11 §3)
+id: VAL-FILE-UPLOAD-001
+vuln_class: file-upload
+executor: http
+safety_level: 2
+positive_test:
+  description: "File uji SVG bermarker unik diterima, lalu tersaji kembali dari URL yang dapat diakses dengan marker utuh dan content-type yang mengeksekusi (image/svg+xml / text/html)"
+negative_control:
+  description: "Nama file acak yang tidak pernah diunggah harus 404 / tidak memuat marker"
+baseline:
+  description: "Respons form upload sebelum pengiriman (field & batasan yang diumumkan)"
+repeat: 2
+verdict:
+  true_positive: "file tersimpan + tersaji publik + marker utuh + kontrol negatif 404"
+  false_positive: "file tersaji hanya sebagai unduhan aman (Content-Disposition attachment + content-type netral + marker ter-encode)"
+  inconclusive: "lokasi penyimpanan tidak dapat ditentukan dari respons maupun tebakan path umum"
